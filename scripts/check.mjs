@@ -15,4 +15,6 @@ for (const dir of ['src', 'scripts', 'test']) {
 }
 const p = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 if (p.dependencies['selection-hook'] !== '2.1.1') throw new Error('Review native dependency upgrades explicitly');
+const patch = await readFile(join(root, 'cordis.patch.yml'), 'utf8');
+if (!/^- insert:\s*\n\s+- id: selection-assistant\s*\n\s+name: dsh-selection-assistant\s*$/.test(patch)) throw new Error('DSH 0.2 overlay must be an array of insert entries');
 console.log('Syntax and package checks passed (' + count + ' files)');
