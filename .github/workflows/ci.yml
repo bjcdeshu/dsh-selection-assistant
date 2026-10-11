@@ -1,0 +1,27 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Syntax and unit tests (no native hooks, no model calls)
+        run: npm run verify
+      - name: Build native UI with Windows Framework compiler
+        if: runner.os == 'Windows'
+        run: npm run build:native
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: windows-native-ui
+          path: dist/native/*/SelectionAssistant.UI.exe
