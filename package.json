@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/index.js",
   "exports": { ".": "./src/index.js", "./package.json": "./package.json" },
-  "files": ["src", "native", "scripts/build-native.mjs", "dist/native", "cordis.patch.yml", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"],
+  "files": ["src", "native", "scripts/build-native.mjs", "cordis.patch.yml", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "SECURITY.md", "docs"],
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "check": "node scripts/check.mjs",
