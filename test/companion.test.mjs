@@ -28,7 +28,7 @@ async function harness() {
   vm.runInNewContext(code.replace('import.meta.url', '"test"'), sandbox, { filename: 'companion.vm.js' });
   const host = message => handlers.get(fakeProcess.stdin)(message);
   const surface = message => handlers.get(ui.stdout)(message);
-  host({ type: 'init', nativeExe: 'fake.exe', windowStateFile: 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', settings: validateSettings({ enabled: true }) });
+  host({ type: 'init', nativeExe: 'fake.exe', iconSource: 'C:\\custom DSH install\\DeepSeek Harness.exe', windowStateFile: 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', settings: validateSettings({ enabled: true }) });
   const select = text => {
     hook.emit('text-selection', { text, programName: 'notepad.exe', endBottom: { x: 1, y: 2 } });
     for (const [id, fn] of [...timers]) { timers.delete(id); fn(); }
@@ -39,7 +39,7 @@ async function harness() {
 
 test('native UI receives the host profile state path as one argument, outside the build cache', async () => {
   const h = await harness();
-  assert.deepEqual(Array.from(h.spawns[0][1]), ['--state-file', 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json']);
+  assert.deepEqual(Array.from(h.spawns[0][1]), ['--state-file', 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', '--icon-source', 'C:\\custom DSH install\\DeepSeek Harness.exe']);
 });
 
 // Regression proven by review: cancelling A after B was clicked cancelled B.

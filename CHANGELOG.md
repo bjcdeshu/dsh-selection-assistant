@@ -2,6 +2,9 @@
 
 ## Unreleased — UI and quick translation
 
+- Anchor the toolbar to the left/below the selection release point, with its visible right edge aligned to the pointer and work-area edge avoidance.
+- Reuse the running DSH host's multi-resolution icon for translation/settings windows and the tray.
+
 - Raise result windows on explicit actions, with persistent pin behavior and compact vector controls.
 - Keep text outside shadow-effect buffers, round layout to display pixels and capture previews at the actual monitor DPI.
 - Add a per-window 20–100% opacity slider and reliable native edge/corner resizing with minimum-size limits.

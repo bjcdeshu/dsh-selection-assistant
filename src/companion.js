@@ -51,8 +51,9 @@ function begin(request, target) {
   surface({ type: 'begin', ...request, surface: target });
   host({ type: 'run', ...request, surface: target });
 }
-function startUi(executable, windowStateFile) {
+function startUi(executable, windowStateFile, iconSource) {
   const args = typeof windowStateFile === 'string' && windowStateFile ? ['--state-file', windowStateFile] : [];
+  if (typeof iconSource === 'string' && iconSource) args.push('--icon-source', iconSource);
   ui = spawn(executable, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: helperEnvironment() });
   ui.stdin.on('error', () => {});
   ui.stderr.on('data', () => {});
@@ -93,7 +94,7 @@ async function shutdown() {
 }
 attachFrames(process.stdin, message => {
   if (message.type === 'init' && !settings) {
-    settings = validateSettings(message.settings); startUi(message.nativeExe, message.windowStateFile); configure();
+    settings = validateSettings(message.settings); startUi(message.nativeExe, message.windowStateFile, message.iconSource); configure();
   } else if (message.type === 'settings') {
     const previous = settings;
     settings = validateSettings(message.settings);

@@ -36,6 +36,7 @@ test('UI preferences use the active settings profile rather than the native buil
   const host = await hostHarness();
   host.receive({ type: 'ready' }); await flush();
   assert.equal(host.frames.at(-1).windowStateFile, join('/fake', 'window-state.json'));
+  assert.equal(host.frames.at(-1).iconSource, 'fake-node', 'use the running host executable rather than an installation guess');
 });
 // Regression: evaluating settings before await leaked an old enabled snapshot
 // back into the companion after a newer pause had already been acknowledged.

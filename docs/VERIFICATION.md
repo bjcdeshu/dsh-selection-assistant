@@ -2,6 +2,18 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-13 follow-up — toolbar placement and host icon
+
+The native build is `26a745c629b497c2`. The user's photos showed a preference for Cherry's toolbar extending to the left of the release point and identified the generic Windows icon used by our translation windows.
+
+- The toolbar now has a dedicated positioning path: its visible right edge aligns with the release point, its body extends left, and its visible top sits 8 DIPs below. At a work-area edge it clamps within the screen; near the bottom it flips above. Its compact 184×48 DIP window size is retained. Result/quick-window placement and saved appearance are unchanged.
+- **155 toolbar checks** pass: negative-coordinate work areas and 100/125/150/200% calculations, plus nine actual HWND placements and visual-border alignment on the current **120 DPI / 125%** display. Placement retains dimensions, topmost status and foreground focus. The full synthetic UI smoke also confirms the new release-point alignment.
+- The Host sends its actual executable path through the companion. Native windows and the tray read the executable's full icon resource group in memory. **19 icon checks** pass: the installed DSH icon contains **16/24/32/48/64/128/256 px** images; the actual WPF HWND's large and small icons have **zero pixel difference** from Windows loading the same sizes from the host. No icon asset is downloaded or redistributed.
+- **26 JS tests**, native compilation and synthetic UI smoke pass. DSH was normally restarted after confirming its current task was stopped. The live helper reports **ready**, both shortcuts registered, and **hostIcon: true**, with the correct host executable argument.
+- The user's existing size/opacity preferences were retained. This pass does not change target-language or model preferences.
+
+Development now proceeds directly on `main` at the user's request; the previous development branch is consolidated into the main branch after verification.
+
 ## 2026-10-13 follow-up — persistent window preferences and languages
 
 The final native build is `4d6d510da42affe7`. This pass completes restart persistence and expands the language controls requested after the display/resize work below.

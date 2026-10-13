@@ -35,7 +35,8 @@ Windows 划词工具条：**翻译 / 解释 / 总结**，另有可输入、粘�
 - 点击翻译后结果窗会出现在前方；固定按钮控制持续置顶，生成过程中不会反复抢焦点。
 - 暂停划词后仍可手动翻译；两个窗口独立处理请求。打开、粘贴、修改语言均不发送请求。
 - 快捷翻译关闭后保留本次进程内的内容，清空或退出后释放，不写入历史文件。剪贴板只有图片时提示先 OCR。
-- 浮条跟随鼠标松开位置，快捷取词使用可信选区坐标；结果窗手动拖动或固定后保留位置。支持系统、浅色和深色主题。
+- 浮条默认位于鼠标松开点左下方，右端贴近松开点；靠屏幕边缘自动避让，底部空间不足时移到上方。快捷取词使用可信选区坐标；结果窗手动拖动或固定后保留位置。支持系统、浅色和深色主题。
+- 翻译窗口、设置窗口及托盘使用当前 DSH 主程序的图标，适配不同显示缩放；图标从已安装宿主读取，不另行下载。
 - 剪贴板兜底默认关闭，密码管理器和终端默认排除。只处理选区，不主动读附近段落。
 - 无公开 HTTP 端口、无网页脚本桥、无遥测、无原文/结果历史文件。仅用继承的 stdio JSONL 连接私有子进程。
 
@@ -93,6 +94,8 @@ dsh plugin --profile desktop add github:bjcdeshu/dsh-selection-assistant
 
 ## 开发与验证
 
+本项目直接在 `main` 分支开发，验证后同步 GitHub，保持单一主分支。
+
 需要 Node 22.19+；原生 UI 构建在 Windows 使用已安装的 .NET Framework 4.8（精简版 Windows 可能缺失）。
 
 ```powershell
@@ -103,6 +106,8 @@ pnpm demo                # 仅示例 UI 的冒烟测试和本地截图；不监�
 node scripts/verify-window-restart.mjs # 独立原生进程重启、尺寸/透明度恢复与语言提交
 node scripts/verify-window-preferences.mjs # 偏好文件、原子保存及异常恢复
 node scripts/verify-languages.mjs # 语言搜索、选择与旧设置兼容
+node scripts/verify-toolbar-placement.mjs # 松开点对齐、边缘避让和多种缩放
+node scripts/verify-host-icon.mjs # 已安装宿主的多尺寸图标与原生窗口图标
 ```
 
 示例截图仅写入 gitignored 的 `.local/`。`demo` 不加载取词库、不注册全局快捷键、不访问剪贴板、不调用模型。CI 在 Linux/Windows 运行纯逻辑测试，并在 Windows 编译 UI。

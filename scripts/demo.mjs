@@ -115,6 +115,11 @@ try {
     assert(actual.x + actual.width <= screen.x + screen.width + 1);
     assert(actual.y + actual.height <= screen.y + screen.height + 1);
     assert(Math.abs(actual.x - x) <= actual.width + 30 && Math.abs(actual.y - y) <= actual.height + 35);
+    if (fx === 0.5 && fy === 0.5) {
+      const scale = actual.dpi / 96;
+      assert(Math.abs(actual.x + actual.width - 6 * scale - x) <= 1, 'toolbar face ends at the selection release point');
+      assert(Math.abs(actual.y + 6 * scale - y - 8 * scale) <= 1, 'toolbar face sits 8 DIPs below the selection release point');
+    }
     placements.push({ anchor: { x, y }, rect: { x: actual.x, y: actual.y, width: actual.width, height: actual.height }, dpi: actual.dpi });
   }
   await writeFile(join(output, 'placement.json'), JSON.stringify({ screens, placements }, null, 2));

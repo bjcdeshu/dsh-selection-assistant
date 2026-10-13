@@ -128,6 +128,35 @@ namespace DshSelectionAssistant {
       if (!pinned) SetWindowPos(h, new IntPtr(-2), 0, 0, 0, 0, flags); // HWND_NOTOPMOST
       if (activate) w.Activate();
     }
+    // Keep the toolbar beside the end of the selection: its visible right edge
+    // meets the release point, while its body extends back toward selected text.
+    // Coordinates, work areas and measured window dimensions are physical pixels.
+    internal static Point ToolbarPosition(System.Drawing.Rectangle area, int width, int height,
+      int x, int y, double scale, double shadowGutterDip = 6) {
+      int gap = Math.Max(1, (int)Math.Round(8 * scale));
+      int shadow = Math.Max(0, (int)Math.Round(shadowGutterDip * scale));
+      int nx = x - width + shadow;
+      int ny = y + gap - shadow;
+      if (ny + height > area.Bottom - gap) ny = y - height - gap + shadow;
+      int minX = area.Left + gap, minY = area.Top + gap;
+      int maxX = Math.Max(minX, area.Right - width - gap);
+      int maxY = Math.Max(minY, area.Bottom - height - gap);
+      return new Point { X = Math.Max(minX, Math.Min(nx, maxX)), Y = Math.Max(minY, Math.Min(ny, maxY)) };
+    }
+    public static void PlaceToolbar(Window w, int x, int y, double shadowGutterDip = 6) {
+      IntPtr h = Handle(w);
+      w.WindowStartupLocation = WindowStartupLocation.Manual;
+      // Moving onto the anchor's monitor first lets WPF apply its DPI before
+      // measuring the HWND; this also works on monitors with negative origins.
+      SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, 0x0015);
+      w.UpdateLayout();
+      var area = Forms.Screen.FromPoint(new System.Drawing.Point(x, y)).WorkingArea;
+      FitToWorkArea(w, area);
+      Rect actual; GetWindowRect(h, out actual);
+      Point position = ToolbarPosition(area, actual.Right - actual.Left, actual.Bottom - actual.Top,
+        x, y, Scale(w), shadowGutterDip);
+      SetWindowPos(h, IntPtr.Zero, position.X, position.Y, 0, 0, 0x0015);
+    }
     // All arguments and work areas are physical pixels. Never change z-order
     // here: the user's pin state and the toolbar's Topmost are owned by WPF.
     public static void Place(Window w, int x, int y, bool centered = false) {

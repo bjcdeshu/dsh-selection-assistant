@@ -30,6 +30,7 @@ namespace DshSelectionAssistant {
     static DispatcherTimer ToolbarTimer;
     internal static Dictionary<string, object> Config;
     internal static WindowPreferences Preferences;
+    static HostIcon Icons;
     static object[] Models = new object[0];
     static string SelectionId;
     internal static bool Closing;
@@ -63,15 +64,19 @@ namespace DshSelectionAssistant {
       Demo = args.Length > 0 && args[0] == "--demo";
       Visuals.AnimationsEnabled = !Demo;
       if (Demo && args.Length > 1) PreviewDirectory = Path.GetFullPath(args[1]);
-      string stateFile = null;
-      for (int i = 0; i + 1 < args.Length; i++) if (args[i] == "--state-file") stateFile = args[i + 1];
+      string stateFile = null, iconSource = null;
+      for (int i = 0; i + 1 < args.Length; i++) {
+        if (args[i] == "--state-file") stateFile = args[i + 1];
+        if (args[i] == "--icon-source") iconSource = args[i + 1];
+      }
       // A WinExe has no console code page. Open inherited pipes explicitly;
       // Console.InputEncoding/OutputEncoding would call SetConsoleCP and fail.
       Console.SetIn(new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false)));
       Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
       App = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+      Icons = HostIcon.Load(iconSource);
       Preferences = new WindowPreferences(stateFile);
-      App.Exit += delegate { Preferences.Dispose(); };
+      App.Exit += delegate { Preferences.Dispose(); Icons.Dispose(); };
       App.SessionEnding += delegate { Preferences.Flush(); };
       App.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e) { e.Handled = true; if (Demo) Send("demo-error", "message", e.Exception.ToString()); Health("ui-error", e.Exception.GetType().Name); Notice("界面操作未完成，请关闭小窗后重试。"); };
       App.Startup += delegate {
@@ -128,6 +133,7 @@ namespace DshSelectionAssistant {
     internal static Window WindowBase(double width, double height, bool noActivate, bool taskbar = false) {
       var w = new Window { Width = width, Height = height, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = taskbar, Topmost = true, ShowActivated = !noActivate, WindowStartupLocation = WindowStartupLocation.Manual, ResizeMode = ResizeMode.NoResize, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), Foreground = Ink };
       w.UseLayoutRounding = true; w.SnapsToDevicePixels = true;
+      if (Icons != null && Icons.WindowImage != null) w.Icon = Icons.WindowImage;
       TextOptions.SetTextFormattingMode(w, TextFormattingMode.Display);
       TextOptions.SetTextRenderingMode(w, TextRenderingMode.Auto);
       w.SourceInitialized += delegate { if (!taskbar) Native.ToolWindow(w, noActivate); };
@@ -138,7 +144,7 @@ namespace DshSelectionAssistant {
     internal static TextBlock Text(string text, double size = 13, Brush color = null) { return new TextBlock { Text = text, FontSize = size, Foreground = color ?? Ink, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 4, 2, 4) }; }
 
     static void SetupTray() {
-      Tray = new Forms.NotifyIcon { Icon = System.Drawing.SystemIcons.Information, Text = "DSH 划词助手 · 等待启用", Visible = true };
+      Tray = new Forms.NotifyIcon { Icon = Icons.TrayIcon, Text = "DSH 划词助手 · 等待启用", Visible = true };
       var menu = new Forms.ContextMenuStrip();
       ToggleItem = new Forms.ToolStripMenuItem("启用全局划词");
       ToggleItem.Click += delegate { if (Config == null) return; if (!Bool(Config, "enabled")) ShowSettings(); else Send("settings-save", "settings", new Dictionary<string, object> { { "enabled", false } }); };
@@ -180,7 +186,7 @@ namespace DshSelectionAssistant {
     static void Health(string state, string errorType = "") {
       if (Demo) return;
       // Last status only, in this build's cache. No source text, model output or credentials.
-      try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui-status.json"), new JavaScriptSerializer().Serialize(new { state = state, errorType = errorType, processId = System.Diagnostics.Process.GetCurrentProcess().Id, selectionShortcut = HotkeyRegistered, quickShortcut = RegisteredQuickHotkey, at = DateTime.UtcNow.ToString("o") })); } catch {}
+      try { File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ui-status.json"), new JavaScriptSerializer().Serialize(new { state = state, errorType = errorType, processId = System.Diagnostics.Process.GetCurrentProcess().Id, selectionShortcut = HotkeyRegistered, quickShortcut = RegisteredQuickHotkey, hostIcon = Icons != null && Icons.IsHostIcon, at = DateTime.UtcNow.ToString("o") })); } catch {}
     }
 
     static TranslationWindow GetPanel(string surface) {
@@ -267,9 +273,9 @@ namespace DshSelectionAssistant {
         var shell = Visuals.Shell(row, 0, 10, 6, 8);
         Toolbar.Content = shell;
       }
-      Visuals.Show(Toolbar); Toolbar.UpdateLayout(); Native.Place(Toolbar, Num(message, "x"), Num(message, "y")); Native.Present(Toolbar);
+      Visuals.Show(Toolbar); Toolbar.UpdateLayout(); Native.PlaceToolbar(Toolbar, Num(message, "x"), Num(message, "y")); Native.Present(Toolbar);
       string placedId = SelectionId;
-      Toolbar.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(delegate { if (Toolbar.IsVisible && SelectionId == placedId) Native.Place(Toolbar, Num(message, "x"), Num(message, "y")); }));
+      Toolbar.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(delegate { if (Toolbar.IsVisible && SelectionId == placedId) Native.PlaceToolbar(Toolbar, Num(message, "x"), Num(message, "y")); }));
       ToolbarTimer.Interval = TimeSpan.FromMilliseconds(Num(message, "expiresMs", 5000)); ToolbarTimer.Start();
     }
     static void Choose(string action) {
@@ -298,6 +304,7 @@ namespace DshSelectionAssistant {
       if (Config == null) return;
       if (Settings != null) { Settings.Show(); Settings.Activate(); Send("settings-get"); return; }
       Settings = new Window { Title = "DSH 划词助手 · 设置", Width = 560, Height = 620, MinWidth = 440, MinHeight = 480, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Surface, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), Foreground = Ink, Topmost = true };
+      if (Icons != null && Icons.WindowImage != null) Settings.Icon = Icons.WindowImage;
       Settings.Closed += delegate { Settings = null; SettingsStatus = null; SaveButton = null; ModelBox = null; PromptBoxes.Clear(); };
       var dock = new DockPanel { Margin = new Thickness(18) };
       var title = Text("划词与翻译", 21); title.FontWeight = FontWeights.SemiBold; DockPanel.SetDock(title, Dock.Top); dock.Children.Add(title);

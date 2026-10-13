@@ -39,7 +39,7 @@ export async function apply(ctx) {
     const detach = attachFrames(child.stdout, message => { handle(message).catch(() => send({ type: 'notice', message: '操作未完成，请检查模型或划词设置。' })); }, () => { abort(); child.kill(); });
     async function handle(message) {
       if (disposed) return;
-      if (message.type === 'ready') send({ type: 'init', nativeExe, windowStateFile: join(dirname(store.path), 'window-state.json'), settings: store.value });
+      if (message.type === 'ready') send({ type: 'init', nativeExe, iconSource: process.execPath, windowStateFile: join(dirname(store.path), 'window-state.json'), settings: store.value });
       else if (message.type === 'settings-get') {
         const models = await modelCatalog(ctx);
         if (!disposed) send({ type: 'settings', settings: store.value, models });
