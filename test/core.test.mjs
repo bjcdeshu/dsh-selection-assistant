@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { DEFAULT_SETTINGS, validateSettings, SettingsStore } from '../src/settings.js';
 import { buildPrompt, targetLanguage } from '../src/prompts.js';
-import { normalizeSelection, SelectionState, validPoint, isBlocked } from '../src/selection.js';
+import { normalizeSelection, selectionAnchor, SelectionState, validPoint, isBlocked } from '../src/selection.js';
 import { attachFrames, sendFrame } from '../src/protocol.js';
 import { runAction, resolveRoute } from '../src/model.js';
 import { helperEnvironment } from '../src/environment.js';
@@ -35,6 +35,23 @@ test('invalid selection-hook coordinates fall back to the real mouse point', () 
   assert.equal(validPoint({ x: -99999, y: -99999 }), false);
   const selection = normalizeSelection({ ...data, endBottom: { x: -99999, y: -99999 }, mousePosEnd: { x: 5, y: 6 } }, settings());
   assert.equal(selection.x, 5);
+});
+test('mouse selection follows release point instead of a distant UIA rectangle, including reverse drags', () => {
+  for (const mousePosEnd of [{ x: 110, y: 190 }, { x: -1200, y: -400 }, { x: 0, y: 0 }]) {
+    assert.deepEqual(selectionAnchor({ posLevel: 3, endBottom: { x: 960, y: 540 }, mousePosEnd }), mousePosEnd);
+  }
+});
+test('position confidence rejects default rectangles and hotkeys use trusted edges or current cursor', () => {
+  const selection = { posLevel: 1, endBottom: { x: 0, y: 0 }, mousePosEnd: { x: 600, y: 300 } };
+  assert.deepEqual(selectionAnchor(selection), { x: 600, y: 300 });
+  assert.equal(selectionAnchor({ ...selection, posLevel: 0 }), null);
+  assert.deepEqual(selectionAnchor(selection, { trigger: 'hotkey', cursor: { x: -400, y: 30 } }), { x: -400, y: 30 });
+  assert.deepEqual(selectionAnchor({ ...selection, posLevel: 3 }, { trigger: 'hotkey' }), { x: 0, y: 0 });
+});
+test('older settings gain theme and manual shortcut without replacing saved preferences', () => {
+  const migrated = validateSettings({ enabled: false, targetLanguage: '日本語', provider: 'saved', model: 'original' });
+  assert.equal(migrated.theme, 'system'); assert.equal(migrated.quickHotkey, 'Ctrl+Alt+T'); assert.equal(migrated.model, 'original');
+  assert.throws(() => validateSettings({ quickHotkey: 'Ctrl+Alt+D' }));
 });
 test('snapshots are consumed once and stale clicks cannot submit', () => {
   let now = 100; const state = new SelectionState(() => now);

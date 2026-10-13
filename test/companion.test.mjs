@@ -9,13 +9,13 @@ import { ACTIONS } from '../src/prompts.js';
 
 /** Run the actual companion logic with fake pipes/hook. Never spawns or listens. */
 async function harness() {
-  const handlers = new Map(), messages = [], timers = new Map(); let clock = 0, hook;
+  const handlers = new Map(), messages = [], timers = new Map(); let clock = 0, hook, starts = 0;
   const fakeProcess = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: new EventEmitter(), env: {}, exit: () => {} });
   const ui = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: {}, stderr: new EventEmitter(), exitCode: null, kill: () => {} });
   class Hook extends EventEmitter {
     static FilterMode = { EXCLUDE_LIST: 2 };
     constructor() { super(); hook = this; }
-    start() { return true; } stop() {} cleanup() {}
+    start() { starts++; return true; } stop() {} cleanup() {}
   }
   const code = (await readFile(new URL('../src/companion.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
   const sandbox = {
@@ -34,7 +34,7 @@ async function harness() {
     for (const [id, fn] of [...timers]) { timers.delete(id); fn(); }
     return messages.filter(x => x.to === 'ui' && x.type === 'selection').at(-1).id;
   };
-  return { host, surface, select, messages };
+  return { host, surface, select, messages, starts: () => starts };
 }
 
 // Regression proven by review: cancelling A after B was clicked cancelled B.
@@ -61,4 +61,31 @@ test('selecting alone never sends text to the model host', async () => {
   const h = await harness(); h.select('private selection not submitted');
   assert.equal(h.messages.filter(x => x.to === 'host' && x.type === 'run').length, 0);
   assert(!JSON.stringify(h.messages).includes('private selection not submitted'));
+});
+test('manual translation works while paused and never starts a selection hook', async () => {
+  const h = await harness();
+  h.host({ type: 'settings', settings: validateSettings({ enabled: false }) });
+  const starts = h.starts();
+  h.surface({ type: 'submit', id: 'manual-1', surface: 'quick', action: 'translate', text: ' OCR text ' });
+  const run = h.messages.filter(x => x.to === 'host' && x.type === 'run').at(-1);
+  assert.equal(run.source, 'manual'); assert.equal(run.surface, 'quick'); assert.equal(run.text, 'OCR text'); assert.equal(run.id, 'manual-1');
+  assert.equal(h.starts(), starts);
+});
+test('concurrent quick and selected requests keep their output and cancellation separate', async () => {
+  const h = await harness(); const selection = h.select('selected text');
+  h.surface({ type: 'action', id: selection, action: 'explain' });
+  h.surface({ type: 'submit', id: 'quick-1', surface: 'quick', action: 'translate', text: 'typed text' });
+  h.host({ type: 'delta', id: selection, text: 'selected output' }); assert.equal(h.messages.at(-1).surface, 'selection');
+  h.host({ type: 'delta', id: 'quick-1', text: 'manual output' }); assert.equal(h.messages.at(-1).surface, 'quick');
+  h.surface({ type: 'cancel', id: selection });
+  const before = h.messages.length; h.host({ type: 'delta', id: selection, text: 'late' }); assert.equal(h.messages.length, before);
+  h.host({ type: 'done', id: 'quick-1' }); assert.equal(h.messages.at(-1).surface, 'quick');
+  const finished = h.messages.length; h.host({ type: 'delta', id: 'quick-1', text: 'late after done' }); assert.equal(h.messages.length, finished);
+});
+test('invalid manual input is rejected locally and appearance changes do not restart the hook', async () => {
+  const h = await harness(); const starts = h.starts();
+  h.host({ type: 'settings', settings: validateSettings({ enabled: true, theme: 'dark' }) }); assert.equal(h.starts(), starts);
+  for (const text of ['', ' ', 'x'.repeat(12001), 'a\x00b']) h.surface({ type: 'submit', id: 'bad', surface: 'quick', action: 'translate', text });
+  assert.equal(h.messages.filter(x => x.to === 'host' && x.type === 'run').length, 0);
+  assert.equal(h.messages.filter(x => x.type === 'input-error').length, 4);
 });

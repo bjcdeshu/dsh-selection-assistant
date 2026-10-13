@@ -17,6 +17,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   toolbarDelayMs: 100,
   toolbarTimeoutMs: 5000,
   fontSize: 15,
+  theme: 'system',
+  quickHotkey: 'Ctrl+Alt+T',
   blockedApps: ['WindowsTerminal.exe', 'cmd.exe', 'powershell.exe', 'pwsh.exe', 'KeePass.exe', 'KeePassXC.exe', '1Password.exe', 'Bitwarden.exe', 'SelectionAssistant.UI.exe'],
   prompts: DEFAULT_PROMPTS,
 });
@@ -27,6 +29,8 @@ export function validateSettings(input, base = DEFAULT_SETTINGS) {
   const result = { ...base, ...input, prompts: { ...base.prompts, ...(input.prompts ?? {}) } };
   for (const key of ['enabled', 'clipboardFallback']) if (typeof result[key] !== 'boolean') throw new Error(key + ' 必须是布尔值');
   if (!['auto', 'hotkey'].includes(result.trigger)) throw new Error('无效触发方式');
+  if (!['system', 'light', 'dark'].includes(result.theme)) throw new Error('无效主题');
+  if (!['Ctrl+Alt+T', 'Ctrl+Shift+T', 'Alt+Shift+T', 'none'].includes(result.quickHotkey)) throw new Error('无效快捷翻译快捷键');
   for (const key of ['targetLanguage', 'provider', 'model']) {
     if (typeof result[key] !== 'string' || result[key].length > 160 || /[\r\n\x00]/.test(result[key])) throw new Error('无效 ' + key);
     result[key] = result[key].trim();

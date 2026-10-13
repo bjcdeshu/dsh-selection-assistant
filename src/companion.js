@@ -8,7 +8,8 @@ import { helperEnvironment } from './environment.js';
 
 const require = createRequire(import.meta.url);
 const selections = new SelectionState();
-let settings, ui, hook, showTimer, stopping = false, activeId = null;
+let settings, ui, hook, showTimer, stopping = false;
+const active = new Map();
 const host = message => sendFrame(process.stdout, message);
 const surface = message => sendFrame(ui?.stdin, message);
 function hide() { clearTimeout(showTimer); selections.clear(); surface({ type: 'hide-toolbar' }); }
@@ -35,13 +36,20 @@ function configure() {
     host({ type: 'fatal', code: 'hook-load-failed' });
   }
 }
-function selected(data) {
-  const selection = normalizeSelection(data, settings);
+function selected(data, options) {
+  const selection = normalizeSelection(data, settings, options);
   if (!selection) { hide(); return; }
   const accepted = selections.accept(selection, settings.toolbarTimeoutMs + settings.toolbarDelayMs);
   if (!accepted) return;
   clearTimeout(showTimer);
   showTimer = setTimeout(() => surface({ type: 'selection', id: accepted.id, x: accepted.x, y: accepted.y, expiresMs: settings.toolbarTimeoutMs }), settings.toolbarDelayMs);
+}
+function begin(request, target) {
+  const previous = active.get(target);
+  if (previous) surface({ type: 'failed', id: previous, surface: target, message: '已由新请求替换' });
+  active.set(target, request.id);
+  surface({ type: 'begin', ...request, surface: target });
+  host({ type: 'run', ...request, surface: target });
 }
 function startUi(executable) {
   ui = spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: helperEnvironment() });
@@ -54,13 +62,21 @@ function startUi(executable) {
     else if (message.type === 'action' && ACTIONS.includes(message.action)) {
       const selection = selections.take(message.id);
       if (!selection) return;
-      clearTimeout(showTimer); activeId = selection.id;
-      surface({ type: 'begin', id: selection.id, action: message.action, text: selection.text, x: selection.x, y: selection.y });
-      host({ type: 'run', ...selection, action: message.action });
+      clearTimeout(showTimer);
+      begin({ ...selection, source: 'selection', action: message.action }, 'selection');
+    } else if (message.type === 'submit' && ['selection', 'quick'].includes(message.surface)) {
+      if (typeof message.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(message.id)) return;
+      if (!ACTIONS.includes(message.action) || typeof message.text !== 'string' || !message.text.trim() || message.text.length > settings.maxChars || /\x00/.test(message.text)) {
+        surface({ type: 'input-error', id: message.id, surface: message.surface, message: '请输入文字，最多 ' + settings.maxChars + ' 字。' }); return;
+      }
+      if (message.targetLanguage !== undefined && (typeof message.targetLanguage !== 'string' || !message.targetLanguage.trim() || message.targetLanguage.length > 160 || /[\r\n\x00]/.test(message.targetLanguage))) return;
+      begin({ id: message.id, source: 'manual', action: message.action, text: message.text.trim(), ...(message.targetLanguage ? { targetLanguage: message.targetLanguage } : {}) }, message.surface);
     } else if (message.type === 'dismiss') { if (selections.current?.id === message.id) { clearTimeout(showTimer); selections.clear(); } }
-    else if (message.type === 'cancel' && message.id === activeId && activeId !== null) { host({ type: 'cancel', id: message.id }); activeId = null; }
+    else if (message.type === 'cancel') {
+      for (const [target, id] of active) if (message.id === id) { host({ type: 'cancel', id }); active.delete(target); }
+    }
     else if (message.type === 'hotkey' && settings.enabled) {
-      try { selected(hook?.getCurrentSelection()); } catch { surface({ type: 'notice', message: '未能读取当前选区。' }); }
+      try { selected(hook?.getCurrentSelection(), { trigger: 'hotkey', cursor: message }); } catch { surface({ type: 'notice', message: '未能读取当前选区。' }); }
     } else if (message.type === 'settings-get') host({ type: 'settings-get' });
     else if (message.type === 'settings-save') host({ type: 'settings-save', settings: message.settings });
     else if (message.type === 'shutdown') shutdown();
@@ -68,7 +84,7 @@ function startUi(executable) {
 }
 async function shutdown() {
   if (stopping) return; stopping = true;
-  clearTimeout(showTimer); stopHook(); host({ type: 'cancel', id: activeId });
+  clearTimeout(showTimer); stopHook(); host({ type: 'cancel' }); active.clear();
   surface({ type: 'shutdown' });
   const timer = setTimeout(() => { ui?.kill(); process.exit(0); }, 1200);
   if (!ui || ui.exitCode !== null) { clearTimeout(timer); process.exit(0); }
@@ -80,10 +96,17 @@ attachFrames(process.stdin, message => {
   } else if (message.type === 'settings') {
     const previous = settings;
     settings = validateSettings(message.settings);
-    if (JSON.stringify(previous) !== JSON.stringify(settings)) configure();
+    if (['enabled', 'trigger', 'clipboardFallback', 'blockedApps'].some(key => JSON.stringify(previous[key]) !== JSON.stringify(settings[key]))) configure();
     surface(message);
   } else if (message.type === 'shutdown') shutdown();
-  else if (message.type === 'notice' || message.id === activeId) surface(message);
+  else if (message.type === 'notice') surface(message);
+  else {
+    for (const [target, id] of active) if (message.id === id) {
+      surface({ ...message, surface: target });
+      if (message.type === 'done' || message.type === 'failed') active.delete(target);
+      break;
+    }
+  }
 }, () => shutdown());
 process.stdin.on('end', shutdown);
 process.stdout.on('error', shutdown);

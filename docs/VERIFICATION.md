@@ -2,6 +2,53 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-13 local development — UI / quick translation
+
+UI refresh, selection positioning corrections and a separate manual translation window, developed on `feat/ui-v2-quick-translate` from `ef62143`. This work is not yet a published release.
+
+### Verified in this development pass
+
+- 24 automated tests pass: the previous 16 plus confidence-aware mouse/hotkey positioning, legacy settings migration, manual translation while paused, input validation, independent per-window requests/cancellation and stream ownership. Appearance changes do not restart the selection hook.
+- Native compilation includes all C# sources, manifest and `.exe.config`; the same inputs are fingerprinted. The runtime config opts WPF into per-monitor scaling on .NET Framework 4.8.
+- Native UI smoke verifies light/dark output, paused manual input, no request before Submit, quick-window content retention, close-before-begin protection, stop/late-frame rejection, close/reopen, pin-position retention and respecting unpinned z-order.
+- Nine synthetic placements on the actual monitor's work area pass containment and proximity checks: **2560×1440 display, 125% scaling / 120 DPI**, work area x=70, y=0, width=2490, height=1440. These are genuine HWND rectangle checks, with synthetic anchors.
+- Live Notepad test with synthetic text: a forward mouse selection displayed the new toolbar immediately beside the release point. After moving the Notepad window, a reverse selection displayed it at the opposite end. Cherry's existing toolbar was also visible on the first gesture; no Cherry settings were changed.
+- Live DSH quick translation: Ctrl+Alt+T opened the window; typing a fixed English sentence did not submit it; Ctrl+Enter used the saved DSH model and displayed a completed Chinese translation. Repeated successfully with global selection monitoring paused. The original enabled/auto/clipboard-fallback-off preferences were restored afterward.
+- The final live helper uses native cache hash `3c07cf9a261e9f2e`. Both shortcut registrations are confirmed by the text-free startup status. Synthetic screenshots in `docs/images` were regenerated from the final source.
+- DSH 0.2.0-rc.2 keeps Host JavaScript modules cached across plugin toggles. This was confirmed by a newly created cache directory using the **old build algorithm**, followed by native compilation failure after the source split. A normal DSH exit/reopen loaded the current Host/build modules. Later native-only changes were applied by toggling this plugin; old helper processes exited.
+
+### Measurements
+
+The reproducible UI-only recipe in `scripts/benchmark-native.mjs` launches one native helper, idles, opens a result, streams 150 fixed chunks at 30ms intervals, and performs ten close/reopen cycles. No model calls, hook, forced GC or working-set trimming. One before/after run, with unchanged synthetic content:
+
+| UI-only stage | Before working set / private MiB | After working set / private MiB |
+|---|---:|---:|
+| Idle | 72.67 / 68.45 | 77.54 / 70.25 |
+| Opened | 97.05 / 83.05 | 102.57 / 84.14 |
+| Streamed | 115.35 / 104.00 | 113.95 / 98.90 |
+| After 10 close/reopen cycles | 120.07 / 108.54 | 121.33 / 107.12 |
+
+CPU time between opened and streamed: 0.8125s before, 0.5469s after. This supports reduced renderer work in this recipe; memory changes are small and mixed, not a broad RAM-saving claim. The final taskbar/accessibility, button styling and stale input-error handling changes were made after this measurement; they do not change the streaming renderer.
+
+Live two-helper snapshot after the Notepad test, over an idle five-second interval:
+
+| Process | Working set MiB | Private MiB | CPU delta |
+|---|---:|---:|---:|
+| Native UI | 87.02 | 73.43 | 0.0000s |
+| Node companion | 115.36 | 25.26 | 0.0000s |
+| Sum | 202.38 | 98.69 | 0.0000s |
+
+Working sets include shared pages. This live snapshot is at a different lifecycle stage from the UI-only benchmark; the two are not comparable baselines.
+
+### Remaining coverage
+
+- Mixed-DPI multiple monitors, other scaling factors and negative-coordinate monitors are covered only by coordinate logic, not real display hardware.
+- Broad Office/PDF/elevated-app compatibility, prolonged 1/5/10-minute idle and long-duration memory growth, and a controlled Cherry resource comparison remain unmeasured.
+- Real clipboard text/image contention paths and real concurrent model requests were not exercised; manual typing and pause were exercised live, request concurrency and input limits were tested with mocks.
+- The UI direction uses Cherry's compact toolbar/function-window behavior as a reference, with independent native implementation. This pass is not a claim of pixel identity or user acceptance of the final appearance. Reference: [Cherry's official selection assistant documentation](https://github.com/CherryHQ/cherry-studio-docs/blob/main/cherrystudio/preview/selection-assistant.md).
+
+The records below describe the earlier v0.1.0 baseline and remain historical evidence.
+
 ## Environment
 
 - Windows desktop with the system .NET Framework 4.x compiler and WPF.

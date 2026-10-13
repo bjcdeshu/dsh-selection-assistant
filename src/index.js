@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SettingsStore } from './settings.js';
+import { SettingsStore, validateSettings } from './settings.js';
 import { attachFrames, sendFrame } from './protocol.js';
 import { modelCatalog, runAction, UserFacingError } from './model.js';
 import { buildNative } from '../scripts/build-native.mjs';
@@ -23,9 +23,13 @@ export async function apply(ctx) {
       env: helperEnvironment(process.env, true),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    let disposed = false, active = null;
+    let disposed = false;
+    const active = new Map();
     const send = message => sendFrame(child.stdin, message);
-    const abort = () => { active?.controller.abort(); active = null; };
+    const abort = target => {
+      if (target !== undefined) { active.get(target)?.controller.abort(); active.delete(target); }
+      else { for (const run of active.values()) run.controller.abort(); active.clear(); }
+    };
     child.stdin.on('error', () => {});
     // Native/companion diagnostics are intentionally not relayed verbatim: they
     // could contain selected text. Only explicit protocol error codes are logged.
@@ -41,23 +45,33 @@ export async function apply(ctx) {
         if (!disposed) send({ type: 'settings', settings: store.value, models });
       }
       else if (message.type === 'settings-save') {
+        const previous = store.value;
         const next = await store.save(message.settings);
-        if (active) send({ type: 'failed', id: active.id, message: '设置已更新，当前请求已停止。' });
-        abort(); send({ type: 'settings', settings: next });
+        const modelChanged = ['provider', 'model', 'targetLanguage', 'prompts', 'timeoutMs', 'maxChars', 'maxTokens'].some(key => JSON.stringify(previous[key]) !== JSON.stringify(next[key]));
+        for (const [target, run] of active) if (modelChanged || (!next.enabled && run.source === 'selection')) {
+          send({ type: 'failed', id: run.id, surface: target, message: '设置已更新，当前请求已停止。' }); abort(target);
+        }
+        send({ type: 'settings', settings: next });
       } else if (message.type === 'cancel') {
-        if (!message.id || active?.id === message.id) abort();
+        for (const [target, run] of active) if (!message.id || run.id === message.id) abort(target);
       } else if (message.type === 'run') {
-        const s = store.value;
-        if (!s.enabled || isBlocked(message.programName, s.blockedApps) || typeof message.id !== 'string' || message.id.length > 64) return;
-        abort();
-        const run = { id: message.id, controller: new AbortController() }; active = run;
+        let s = store.value;
+        const target = message.surface || 'selection';
+        const source = message.source || 'selection';
+        if (!['selection', 'quick'].includes(target) || !['selection', 'manual'].includes(source) || typeof message.id !== 'string' || !message.id || message.id.length > 64) return;
+        if (source === 'selection' && (!s.enabled || isBlocked(message.programName, s.blockedApps))) {
+          send({ type: 'failed', id: message.id, surface: target, message: '划词监听已暂停或此应用已排除。' }); return;
+        }
+        abort(target);
+        const run = { id: message.id, source, controller: new AbortController() }; active.set(target, run);
         try {
+          if (message.targetLanguage !== undefined) s = validateSettings({ targetLanguage: message.targetLanguage }, s);
           await runAction(ctx, s, message, run.controller.signal, event => {
-            if (active === run && !disposed) send({ ...event, id: run.id });
+            if (active.get(target) === run && !disposed) send({ ...event, id: run.id, surface: target });
           });
         } catch (error) {
-          if (active === run && !disposed) send({ type: 'failed', id: run.id, message: run.controller.signal.aborted ? '已停止' : /timeout|abort/i.test(error.name) ? '请求超时，请重试或切换模型。' : error instanceof UserFacingError ? error.message : '请求失败，请检查 DSH 模型设置或稍后重试。' });
-        } finally { if (active === run) active = null; }
+          if (active.get(target) === run && !disposed) send({ type: 'failed', id: run.id, surface: target, message: run.controller.signal.aborted ? '已停止' : /timeout|abort/i.test(error.name) ? '请求超时，请重试或切换模型。' : error instanceof UserFacingError ? error.message : '请求失败，请检查 DSH 模型设置或稍后重试。' });
+        } finally { if (active.get(target) === run) active.delete(target); }
       } else if (message.type === 'fatal') logger.warn('划词助手停止（' + String(message.code).replace(/[^a-z0-9_-]/gi, '').slice(0, 60) + '）。');
     }
     return async () => {

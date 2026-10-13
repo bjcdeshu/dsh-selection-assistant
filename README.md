@@ -4,7 +4,7 @@
 
 **让常开的 DeepSeek Harness 顺便接管全局划词，不再为这一个功能多留一整套聊天软件。**
 
-Windows 划词工具条：**翻译 / 解释 / 总结**。复用 Cherry Studio 所用的 MIT `selection-hook` 取词基础，但界面、提示词和 DSH 集成均独立实现。
+Windows 划词工具条：**翻译 / 解释 / 总结**，另有可输入、粘贴 OCR 文字的**快捷翻译**窗口。复用 Cherry Studio 所用的 MIT `selection-hook` 取词基础，界面、提示词和 DSH 集成独立实现。
 
 > **开发预览版。** 当前目标是 Windows 10/11 + DSH Desktop **0.2.0-rc.2**。依赖版本刻意锁定，其他 DSH 版本需要验证。已接入真实宿主，三种模型操作完成，用户确认自动划词和译文正常。自动化测试不等于各类应用都兼容；详见[验证记录与资源实测](docs/VERIFICATION.md)。不宣称零进程或固定内存占用。
 
@@ -18,6 +18,10 @@ Windows 划词工具条：**翻译 / 解释 / 总结**。复用 Cherry Studio �
 
 [设置窗口预览](docs/images/settings.png)
 
+![快捷翻译](docs/images/quick.png)
+
+[深色快捷翻译](docs/images/quick-dark.png)
+
 ## 设计
 
 - 选中文字只弹工具条，**点击动作后才调用模型**。
@@ -26,6 +30,10 @@ Windows 划词工具条：**翻译 / 解释 / 总结**。复用 Cherry Studio �
 - 单次无历史请求，英文默认译成中文、明显中文默认译成英文；解释/总结默认中文，也可固定输出语言。
 - 自定义三类提示词，支持 `{{targetLanguage}}`。显式独立模型或跟随 **DSH 全局默认模型**，不是跟随当前打开的会话。
 - 首次加载处于暂停状态。用户在设置中勾选后才开始监听；托盘可暂停，`Ctrl+Alt+D` 可手动取词。
+- `Ctrl+Alt+T` 或双击托盘打开快捷翻译。支持输入、粘贴、清空、目标语言、复制、停止、重试及 `Ctrl+Enter` 翻译；也可用 Alt+Tab 找回窗口。
+- 暂停划词后仍可手动翻译；两个窗口独立处理请求。打开、粘贴、修改语言均不发送请求。
+- 快捷翻译关闭后保留本次进程内的内容，清空或退出后释放，不写入历史文件。剪贴板只有图片时提示先 OCR。
+- 浮条跟随鼠标松开位置，快捷取词使用可信选区坐标；结果窗手动拖动或固定后保留位置。支持系统、浅色和深色主题。
 - 剪贴板兜底默认关闭，密码管理器和终端默认排除。只处理选区，不主动读附近段落。
 - 无公开 HTTP 端口、无网页脚本桥、无遥测、无原文/结果历史文件。仅用继承的 stdio JSONL 连接私有子进程。
 
@@ -36,7 +44,7 @@ DSH Host 插件                  Node 取词伴生进程              C# WPF 原
 模型/设置/取消  ← stdio →  selection-hook 2.1.1  ← stdio →  工具条/结果/设置/托盘
 ```
 
-**增加两个辅助进程，不增加 Chromium/WebView2 进程。** 取词 native addon 不装入 DSH 主宿主，异常的 UIA provider 不应拖住整个 DSH。WPF 使用 Windows 现有的 .NET Framework 4.x，首次加载用系统 C# 编译器从本仓库源码构建，输出缓存到插件数据目录；不下载编译器、不要求管理员、不修改 DSH 安装包。
+**增加两个辅助进程，不增加 Chromium/WebView2 进程。** 取词 native addon 不装入 DSH 主宿主，异常的 UIA provider 不应拖住整个 DSH。WPF 使用 Windows 现有的 .NET Framework 4.8，首次加载用系统 C# 编译器从本仓库源码构建，输出缓存到插件数据目录；不下载编译器、不要求管理员、不修改 DSH 安装包。
 
 窗口只做 UI，不联网；辅助进程环境采用 OS 字段白名单，不继承模型 API Key、DSH 认证变量或 `NODE_OPTIONS`。模型凭据只留在 DSH。
 
@@ -58,7 +66,7 @@ dsh plugin --profile desktop add github:bjcdeshu/dsh-selection-assistant
 
 应用自有 profile 可能不同，优先在当前实例的插件页面安装，不要盲目修改其他 profile。宿主提示需要重启时，请先保存当前任务再重启；本插件不会自行重启 DSH。
 
-首次加载会出现托盘图标和设置窗口：
+首次加载会出现托盘图标，右键打开设置：
 
 1. 确认 DSH 已配置可用模型。
 2. 阅读隐私说明，勾选“启用全局划词监听”，保存。
@@ -67,7 +75,7 @@ dsh plugin --profile desktop add github:bjcdeshu/dsh-selection-assistant
 
 ### 停用 / 卸载
 
-- 临时停用：托盘 → 暂停全局划词（停止 hook 和全局热键）。
+- 暂停取词：托盘 → 暂停全局划词（停止 hook 和取词热键，快捷翻译仍可用）。
 - 完全停止：在当前 DSH 插件页面关闭或卸载本插件；卸载清理自有进程。
 - 设置保留在 `$DSH_HOME/plugin-data/dsh-selection-assistant/settings.json`（未定义 DSH_HOME 时为用户目录的 `.dsh` 下同一路径）。这里仅有偏好和自定义提示词，没有模型密钥、选区或结果。
 - 原生编译缓存位于同级 `native-cache`。希望清除设置时先停用插件，再自行删除这个明确的插件数据目录，不要删除整个 DSH 数据目录。
@@ -82,7 +90,7 @@ dsh plugin --profile desktop add github:bjcdeshu/dsh-selection-assistant
 
 ## 开发与验证
 
-需要 Node 22.19+；原生 UI 构建在 Windows 使用已安装的 .NET Framework 4.x（精简版 Windows 可能缺失）。
+需要 Node 22.19+；原生 UI 构建在 Windows 使用已安装的 .NET Framework 4.8（精简版 Windows 可能缺失）。
 
 ```powershell
 pnpm install --ignore-scripts
@@ -92,6 +100,10 @@ pnpm demo                # 仅示例 UI 的冒烟测试和本地截图；不监�
 ```
 
 示例截图仅写入 gitignored 的 `.local/`。`demo` 不加载取词库、不注册全局快捷键、不访问剪贴板、不调用模型。CI 在 Linux/Windows 运行纯逻辑测试，并在 Windows 编译 UI。
+
+`node scripts/benchmark-native.mjs` 会显示合成窗口并记录固定流式文本和十次关闭重开的界面资源样本。它只测原生 UI，不代表两个 helper 的总占用或与 Cherry 的对照。
+
+本地源码链接不提供 JS 热更新：DSH 0.2.0-rc.2 的插件开关可能复用已加载的模块。修改 Host JS 或构建器后需要在任务停止时正常重开 DSH；只改原生界面时，可通过插件开关重载。构建缓存指纹包含全部 C# 文件、manifest 和 app.config；`native-cache/<hash>/ui-status.json` 只保存最近的进程、热键注册和错误类型，不含原文、译文或密钥。
 
 ### 发布前手动验收
 

@@ -24,7 +24,7 @@ export async function modelCatalog(ctx) {
 
 /** One stateless LLM request; no agent loop, tools, workspace or chat session. */
 export async function runAction(ctx, settings, request, signal, emit) {
-  if (!ACTIONS.includes(request.action) || typeof request.text !== 'string' || !request.text.trim() || request.text.length > settings.maxChars) throw new UserFacingError('无效或过长的选区');
+  if (!ACTIONS.includes(request.action) || typeof request.text !== 'string' || !request.text.trim() || request.text.length > settings.maxChars || /\x00/.test(request.text)) throw new UserFacingError('文字为空、包含无效字符或超出长度限制');
   const route = resolveRoute(ctx, settings);
   const timeout = AbortSignal.timeout(settings.timeoutMs);
   const combined = AbortSignal.any([signal, timeout]);

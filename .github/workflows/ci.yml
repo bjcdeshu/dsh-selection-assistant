@@ -24,4 +24,6 @@ jobs:
         if: runner.os == 'Windows'
         with:
           name: windows-native-ui
-          path: dist/native/*/SelectionAssistant.UI.exe
+          path: |
+            dist/native/*/SelectionAssistant.UI.exe
+            dist/native/*/SelectionAssistant.UI.exe.config

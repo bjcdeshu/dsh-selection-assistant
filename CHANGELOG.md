@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — UI and quick translation
+
+- Compact toolbar, separate editable quick translation window, consistent light/dark/system appearance, accessible controls and keyboard navigation.
+- Tray and configurable shortcut (default Ctrl+Alt+T); manual translation remains available while selection monitoring is paused. Clipboard is read only on an explicit paste.
+- Independent per-window requests, cancellation, retry and late-response protection, including closing before a submitted request starts.
+- Mouse release anchoring with position-confidence checks; monitor work-area placement in physical pixels; per-monitor WPF scaling configuration; preserve dragged/pinned result positions and z-order.
+- Reuse the streaming document at 100ms intervals and format Markdown on completion; avoid rebuilding completed documents on close.
+- Build/cache all native source files and runtime config. Add repeatable renderer benchmark, native placement/theme/quick-input smoke coverage and protocol regressions.
+
+This is local development work, not a new published release. See `docs/VERIFICATION.md` for observed results and remaining limits.
+
 ## v0.1.0 — Preview
 
 First public MIT release for Windows + DeepSeek Harness Desktop 0.2.0-rc.2.

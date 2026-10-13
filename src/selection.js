@@ -7,14 +7,26 @@ export function isBlocked(program, blockedApps) {
 }
 export function validPoint(p) { return !!p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x !== -99999 && p.y !== -99999 && Math.abs(p.x) < 100000 && Math.abs(p.y) < 100000; }
 
-export function normalizeSelection(data, settings) {
+// selection-hook uses physical screen pixels. A finite UIA rectangle may still
+// describe the whole control; a mouse gesture should follow its release point.
+export function selectionAnchor(data, { trigger = 'auto', cursor } = {}) {
+  const level = data.posLevel;
+  const hasMouse = level === undefined || level >= 1;
+  const hasBounds = level === undefined || level >= 3;
+  const mouse = hasMouse && validPoint(data.mousePosEnd) ? data.mousePosEnd : null;
+  const edge = hasBounds ? [data.endBottom, data.startBottom].find(validPoint) : null;
+  const point = trigger === 'hotkey' ? edge || (validPoint(cursor) && cursor) || mouse : mouse || edge;
+  return point ? { x: Math.round(point.x), y: Math.round(point.y) } : null;
+}
+
+export function normalizeSelection(data, settings, options) {
   if (!settings.enabled || !data || typeof data.text !== 'string') return null;
   if (isBlocked(data.programName, settings.blockedApps)) return null;
   const text = data.text.trim();
   if (!text || text.length > settings.maxChars || /\x00/.test(text)) return null;
   // An extra tripwire, not a promise to detect all passwords or secrets.
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{30,})\b/.test(text)) return null;
-  const anchor = [data.endBottom, data.mousePosEnd, data.startBottom].find(validPoint);
+  const anchor = selectionAnchor(data, options);
   if (!anchor) return null;
   return { id: randomUUID(), text, programName: String(data.programName ?? ''), x: Math.round(anchor.x), y: Math.round(anchor.y) };
 }
