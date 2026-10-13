@@ -2,6 +2,21 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-13 follow-up — clarity, opacity and resizing
+
+The user found the revised layout broadly acceptable, then reported soft text and unusable resizing and requested Cherry-like opacity control. The current native build is `1a1c4b3b5b50e54e`, loaded in the existing DSH plugin through its toggle.
+
+- The compact icon toolbar, 32–34 DIP title bar, neutral surfaces and language/result/footer arrangement follow Cherry's [toolbar](https://github.com/CherryHQ/cherry-studio/blob/main/src/renderer/components/selection/SelectionToolbarView.tsx) and [action window](https://github.com/CherryHQ/cherry-studio/blob/main/src/renderer/windows/selection/action/ActionWindow.tsx) structure. Controls are independently drawn native vectors. Explicit result actions now raise and activate once; pin controls continued topmost behavior. Streaming does not keep raising the window.
+- Removed `DropShadowEffect` from ancestors of text. The shadow is an empty sibling silhouette behind an opaque content surface. Root layout rounding, pixel snapping and display text metrics are enabled. ClearType hints are used only for fully opaque content; partial opacity uses automatic rendering. This addresses a known WPF intermediate-buffer blur source, not a claim that every monitor renders identically. See [Microsoft's rendering explanation](https://learn.microsoft.com/en-us/dotnet/api/system.windows.media.renderoptions.cleartypehint).
+- The title-bar droplet opens a continuous 20–100% opacity slider with a reset. Each window remembers its own value while this helper process runs; closing/reopening retains it, restarting the helper resets it. It changes only local display and does not send content or change model settings.
+- All four edges and corners now use Windows nonclient hit testing and native sizing cursors. A minimally nontransparent shadow gutter makes it mouse-accessible. Minimum sizes keep controls usable; a user-resized result retains its dimensions on later requests.
+- **24 JS tests**, **69 native resize checks** and **10 native stacking checks** pass. Resize tests include actual HWND hit testing at **120 DPI / 125%**, minimum sizes and resize notifications, plus coordinate calculations at 100/125/150/200% and negative positions. These simulated scales are not mixed-monitor hardware tests.
+- Native UI smoke passes, including opacity bounds, per-window independence, retained opacity across close/reopen, minimize/restore position, late responses, cancellation and nine monitor placements.
+- Live GUI: dragging the actual quick window's bottom-right corner changed it from **780×530 to 700×470 DIP** with the content reflowing; the real slider changed to **65%** and back to **100%**. The current helper's startup status is ready with both shortcuts registered. No new model request was needed for these display checks.
+- Preview capture now renders at the actual monitor DPI (e.g. 650×525 physical pixels for a 520×420 DIP result at 125%), rather than rerendering at 96 DPI. The files in `docs/images` are synthetic and regenerated from this build. A scaled preview viewer can still soften an image; assess at its original pixel size.
+
+The resource numbers below were measured before this follow-up. They are not fresh performance measurements of the current shadow/rendering implementation.
+
 ## 2026-10-13 local development — UI / quick translation
 
 UI refresh, selection positioning corrections and a separate manual translation window, developed on `feat/ui-v2-quick-translate` from `ef62143`. This work is not yet a published release.

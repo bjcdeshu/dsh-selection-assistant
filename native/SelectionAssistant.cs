@@ -43,7 +43,7 @@ namespace DshSelectionAssistant {
     static ComboBox TriggerBox, LanguageBox, ModelBox, ThemeBox, QuickHotkeyBox;
     static TextBox ProviderBox, ModelIdBox, BlockedBox;
     static Dictionary<string, TextBox> PromptBoxes = new Dictionary<string, TextBox>();
-    internal static SolidColorBrush Ink = Theme.Brush("Ink", "#252629"), Muted = Theme.Brush("Muted", "#777B83"), Accent = Theme.Brush("Accent", "#159B68"), Line = Theme.Brush("Line", "#E7E8EB"), Surface = Theme.Brush("Surface", "#FFFFFF"), Soft = Theme.Brush("Soft", "#F5F6F8"), Hover = Theme.Brush("Hover", "#E9F5EF");
+    internal static SolidColorBrush Ink = Theme.Brush("Ink", "#1A1A1A"), Muted = Theme.Brush("Muted", "#707070"), Accent = Theme.Brush("Accent", "#159B68"), Line = Theme.Brush("Line", "#E6E6E6"), Surface = Theme.Brush("Surface", "#FFFFFF"), Soft = Theme.Brush("Soft", "#F5F5F5"), Hover = Theme.Brush("Hover", "#EFEFEF");
 
     static SolidColorBrush Hex(string value) { return new SolidColorBrush((Color)ColorConverter.ConvertFromString(value)); }
     internal static string Str(Dictionary<string, object> d, string k, string fallback = "") { object v; return d != null && d.TryGetValue(k, out v) && v != null ? Convert.ToString(v) : fallback; }
@@ -59,13 +59,14 @@ namespace DshSelectionAssistant {
 
     [STAThread] public static void Main(string[] args) {
       Demo = args.Length > 0 && args[0] == "--demo";
+      Visuals.AnimationsEnabled = !Demo;
       if (Demo && args.Length > 1) PreviewDirectory = Path.GetFullPath(args[1]);
       // A WinExe has no console code page. Open inherited pipes explicitly;
       // Console.InputEncoding/OutputEncoding would call SetConsoleCP and fail.
       Console.SetIn(new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false)));
       Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
       App = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-      App.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e) { e.Handled = true; Health("ui-error", e.Exception.GetType().Name); Notice("界面操作未完成，请关闭小窗后重试。"); };
+      App.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e) { e.Handled = true; if (Demo) Send("demo-error", "message", e.Exception.ToString()); Health("ui-error", e.Exception.GetType().Name); Notice("界面操作未完成，请关闭小窗后重试。"); };
       App.Startup += delegate {
         SetupStyles(); SetupTray(); SetupHotkey();
         ToolbarTimer = new DispatcherTimer(); ToolbarTimer.Tick += delegate { HideToolbar(); };
@@ -89,31 +90,7 @@ namespace DshSelectionAssistant {
     }
 
     static void SetupStyles() {
-      var button = new Style(typeof(Button));
-      button.Setters.Add(new Setter(Control.FontFamilyProperty, new FontFamily("Segoe UI, Microsoft YaHei UI")));
-      button.Setters.Add(new Setter(Control.FontSizeProperty, 13.0));
-      button.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 6, 10, 6)));
-      button.Setters.Add(new Setter(Control.MarginProperty, new Thickness(2)));
-      button.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-      button.Setters.Add(new Setter(Control.ForegroundProperty, Ink));
-      button.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
-      button.Setters.Add(new Setter(Control.CursorProperty, Cursors.Hand));
-      var template = new ControlTemplate(typeof(Button));
-      var border = new FrameworkElementFactory(typeof(Border)); border.Name = "chrome";
-      border.SetValue(Border.CornerRadiusProperty, new CornerRadius(6));
-      border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-      var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-      presenter.SetValue(FrameworkElement.MarginProperty, new Thickness(9, 6, 9, 6));
-      presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-      presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-      border.AppendChild(presenter); template.VisualTree = border;
-      var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-      hover.Setters.Add(new Setter(Border.BackgroundProperty, Hover, "chrome")); template.Triggers.Add(hover);
-      var primaryHover = new MultiTrigger(); primaryHover.Conditions.Add(new Condition(UIElement.IsMouseOverProperty, true)); primaryHover.Conditions.Add(new Condition(FrameworkElement.TagProperty, "primary"));
-      primaryHover.Setters.Add(new Setter(Border.BackgroundProperty, Accent, "chrome")); primaryHover.Setters.Add(new Setter(UIElement.OpacityProperty, 0.85, "chrome")); template.Triggers.Add(primaryHover);
-      var disabled = new Trigger { Property = UIElement.IsEnabledProperty, Value = false }; disabled.Setters.Add(new Setter(UIElement.OpacityProperty, 0.4)); template.Triggers.Add(disabled);
-      var focused = new Trigger { Property = UIElement.IsKeyboardFocusedProperty, Value = true }; focused.Setters.Add(new Setter(Border.BorderBrushProperty, Accent, "chrome")); focused.Setters.Add(new Setter(Border.BorderThicknessProperty, new Thickness(1), "chrome")); template.Triggers.Add(focused);
-      button.Setters.Add(new Setter(Control.TemplateProperty, template)); App.Resources.Add(typeof(Button), button);
+      App.Resources.Add(typeof(Button), Visuals.ButtonStyle());
       var textBox = new Style(typeof(TextBox));
       textBox.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8)));
       textBox.Setters.Add(new Setter(Control.BorderBrushProperty, Line));
@@ -132,17 +109,20 @@ namespace DshSelectionAssistant {
       if (Str(Config, "theme", "system") == "system") {
         try { dark = Convert.ToInt32(Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1)) == 0; } catch {}
       }
-      Theme.Set("Ink", dark ? "#E8EAED" : "#252629");
-      Theme.Set("Muted", dark ? "#A6ACB6" : "#777B83");
-      Theme.Set("Surface", dark ? "#242629" : "#FFFFFF");
-      Theme.Set("Soft", dark ? "#1D1F22" : "#F5F6F8");
-      Theme.Set("Line", dark ? "#41454B" : "#E7E8EB");
-      Theme.Set("Hover", dark ? "#314B40" : "#E9F5EF");
+      Theme.Set("Ink", dark ? "#E8E8E8" : "#1A1A1A");
+      Theme.Set("Muted", dark ? "#A3A3A3" : "#707070");
+      Theme.Set("Surface", dark ? "#1F1F1F" : "#FFFFFF");
+      Theme.Set("Soft", dark ? "#292929" : "#F5F5F5");
+      Theme.Set("Line", dark ? "#3A3A3A" : "#E6E6E6");
+      Theme.Set("Hover", dark ? "#363636" : "#EFEFEF");
       Theme.Set("Accent", dark ? "#32B580" : "#159B68");
     }
 
     internal static Window WindowBase(double width, double height, bool noActivate, bool taskbar = false) {
       var w = new Window { Width = width, Height = height, WindowStyle = WindowStyle.None, AllowsTransparency = true, Background = Brushes.Transparent, ShowInTaskbar = taskbar, Topmost = true, ShowActivated = !noActivate, WindowStartupLocation = WindowStartupLocation.Manual, ResizeMode = ResizeMode.NoResize, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), Foreground = Ink };
+      w.UseLayoutRounding = true; w.SnapsToDevicePixels = true;
+      TextOptions.SetTextFormattingMode(w, TextFormattingMode.Display);
+      TextOptions.SetTextRenderingMode(w, TextRenderingMode.Auto);
       w.SourceInitialized += delegate { if (!taskbar) Native.ToolWindow(w, noActivate); };
       return w;
     }
@@ -209,7 +189,8 @@ namespace DshSelectionAssistant {
         Window target = which == "toolbar" ? Toolbar : which == "settings" ? Settings : GetPanel(which).Window;
         if (target != null && target.IsVisible && PreviewDirectory != null) {
           target.UpdateLayout();
-          var bitmap = new RenderTargetBitmap((int)Math.Ceiling(target.ActualWidth), (int)Math.Ceiling(target.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+          double scale = Native.Scale(target);
+          var bitmap = new RenderTargetBitmap((int)Math.Ceiling(target.ActualWidth * scale), (int)Math.Ceiling(target.ActualHeight * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
           bitmap.Render(target); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
           Directory.CreateDirectory(PreviewDirectory);
           string captureName = Regex.Replace(Str(message, "name", which), "[^a-zA-Z0-9_-]", "");
@@ -224,6 +205,8 @@ namespace DshSelectionAssistant {
       if (Demo && type == "demo-pin") { GetPanel(surface).DemoPin(); return; }
       if (Demo && type == "demo-monitors") { Send("demo-monitors", "screens", Forms.Screen.AllScreens.Select(s => new { x = s.WorkingArea.Left, y = s.WorkingArea.Top, width = s.WorkingArea.Width, height = s.WorkingArea.Height }).ToArray()); return; }
       if (Demo && type == "demo-submit") { GetPanel(surface).Submit(); return; }
+      if (Demo && type == "demo-opacity") { GetPanel(surface).DemoOpacity(Num(message, "percent", 100)); return; }
+      if (Demo && type == "demo-minimize") { GetPanel(surface).Window.WindowState = WindowState.Minimized; return; }
       if (Demo && type == "demo-stop") { GetPanel(surface).StopRun(); return; }
       if (Demo && type == "demo-close") { GetPanel(surface).Window.Close(); return; }
       if (Demo && type == "demo-state") {
@@ -231,7 +214,7 @@ namespace DshSelectionAssistant {
         Window window = panel == null ? Toolbar : panel.Window;
         Native.Rect rect = new Native.Rect(); if (window != null) { window.UpdateLayout(); Native.GetWindowRect(Native.Handle(window), out rect); }
         Send("demo-state", "nonce", Str(message, "nonce"), "runId", panel == null ? null : panel.RunId, "busy", panel != null && panel.Busy, "visible", window != null && window.IsVisible, "answer", panel == null ? "" : panel.Answer,
-          "x", rect.Left, "y", rect.Top, "width", rect.Right-rect.Left, "height", rect.Bottom-rect.Top, "dpi", window == null ? 96 : Native.Scale(window)*96, "topmost", window != null && window.Topmost, "input", panel == null ? "" : panel.InputText);
+          "x", rect.Left, "y", rect.Top, "width", rect.Right-rect.Left, "height", rect.Bottom-rect.Top, "dpi", window == null ? 96 : Native.Scale(window)*96, "topmost", window != null && window.Topmost, "minimized", window != null && window.WindowState == WindowState.Minimized, "opacityPercent", panel == null ? 100 : panel.OpacityPercent, "contentOpacity", window != null && window.Content is UIElement ? ((UIElement)window.Content).Opacity : 1, "input", panel == null ? "" : panel.InputText);
         return;
       }
       if (type == "settings") {
@@ -262,15 +245,20 @@ namespace DshSelectionAssistant {
       if (Config == null || !Bool(Config, "enabled")) return;
       HideToolbar(); SelectionId = Str(message, "id");
       if (Toolbar == null) {
-        Toolbar = WindowBase(218, 44, true); Toolbar.Title = "DSH Selection Toolbar";
+        Toolbar = WindowBase(184, 48, true); Toolbar.Title = "DSH Selection Toolbar";
         var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center };
-        row.Children.Add(Button("翻译", delegate { Choose("translate"); }));
-        row.Children.Add(Button("解释", delegate { Choose("explain"); }));
-        row.Children.Add(Button("总结", delegate { Choose("summarize"); }));
-        row.Children.Add(Button("⋯", ShowSettings, "设置 / 暂停"));
-        Toolbar.Content = Card(row, 3);
+        var grip = new Border { Width = 22, Height = 30, Child = Visuals.Icon("grip", 14, Muted), Cursor = Cursors.SizeAll, ToolTip = "拖动浮条" };
+        grip.MouseLeftButtonDown += delegate { Toolbar.DragMove(); };
+        row.Children.Add(grip);
+        row.Children.Add(Visuals.IconButton("translate", delegate { Choose("translate"); }, "翻译", 32));
+        row.Children.Add(Visuals.IconButton("explain", delegate { Choose("explain"); }, "解释", 32));
+        row.Children.Add(Visuals.IconButton("summarize", delegate { Choose("summarize"); }, "总结", 32));
+        row.Children.Add(new Border { Width = 1, Height = 16, Background = Line, Margin = new Thickness(4, 0, 4, 0) });
+        row.Children.Add(Visuals.IconButton("settings", ShowSettings, "设置 / 暂停", 28));
+        var shell = Visuals.Shell(row, 0, 10, 6, 8);
+        Toolbar.Content = shell;
       }
-      Toolbar.Show(); Toolbar.UpdateLayout(); Native.Place(Toolbar, Num(message, "x"), Num(message, "y"));
+      Visuals.Show(Toolbar); Toolbar.UpdateLayout(); Native.Place(Toolbar, Num(message, "x"), Num(message, "y")); Native.Present(Toolbar);
       string placedId = SelectionId;
       Toolbar.Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new System.Action(delegate { if (Toolbar.IsVisible && SelectionId == placedId) Native.Place(Toolbar, Num(message, "x"), Num(message, "y")); }));
       ToolbarTimer.Interval = TimeSpan.FromMilliseconds(Num(message, "expiresMs", 5000)); ToolbarTimer.Start();
@@ -282,7 +270,7 @@ namespace DshSelectionAssistant {
     }
     static void HideToolbar(bool notify = true) {
       if (ToolbarTimer != null) ToolbarTimer.Stop();
-      if (Toolbar != null) Toolbar.Hide();
+      if (Toolbar != null) Visuals.Hide(Toolbar, false);
       string dismissed = SelectionId; SelectionId = null;
       if (notify && dismissed != null) Send("dismiss", "id", dismissed);
     }

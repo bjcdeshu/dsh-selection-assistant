@@ -18,6 +18,7 @@ const seen = new Map();
 const send = message => sendFrame(child.stdin, message);
 child.stdin.on('error', () => {});
 attachFrames(child.stdout, message => {
+  if (message.type === 'demo-error') { console.error(message.message); child.kill(); return; }
   const key = message.type === 'captured' ? 'captured:' + (message.name || message.surface) : message.type === 'demo-state' ? 'state:' + message.nonce : message.type;
   seen.set(key, message); waiting.get(key)?.(message); waiting.delete(key);
 }, error => { console.error(error.message); child.kill(); });
@@ -36,7 +37,7 @@ try {
   console.log(await wait('captured:toolbar'));
   send({ type: 'begin', id: 'demo', action: 'explain', text: 'A good interface stays out of the way until you need it.', x: 500, y: 320 });
   send({ type: 'started', id: 'demo', route: { model: '演示模型（未发起请求）' } });
-  send({ type: 'delta', id: 'demo', text: '好的界面，在你需要时出现，其余时间不打扰。\n\n### 这句话在说什么\n- **按需出现**：选中文字后，再决定是否翻译、解释或总结。\n- **保持专注**：小窗不抢走原应用的焦点，结果可以留下慢慢阅读。\n- **明确边界**：点击之后才调用模型，不把选区写入聊天记录。\n\n> 这是一份界面演示，没有读取真实选区或调用 API。' });
+  send({ type: 'delta', id: 'demo', text: '好的界面，在你需要时出现，其余时间不打扰。\n\n### 这句话在说什么\n- **按需出现**：选中文字后，再决定是否翻译、解释或总结。\n- **保持专注**：点击时结果出现在前方，生成过程中不会反复抢焦点。\n- **明确边界**：点击之后才调用模型，不把选区写入聊天记录。\n\n> 这是一份界面演示，没有读取真实选区或调用 API。' });
   send({ type: 'done', id: 'demo' });
   send({ type: 'capture', surface: 'panel' });
   console.log(await wait('captured:panel'));
@@ -77,6 +78,18 @@ try {
   const quick = await state('quick'); assert(quick.answer.includes('好工具'));
   send({ type: 'demo-close', surface: 'quick' }); send({ type: 'show-quick' });
   const retained = await state('quick'); assert.equal(retained.input, quick.input); assert.equal(retained.answer, quick.answer);
+
+  const beforeMinimize = await state('quick');
+  send({ type: 'demo-minimize', surface: 'quick' }); assert.equal((await state('quick')).minimized, true);
+  send({ type: 'show-quick' }); const restored = await state('quick'); assert.equal(restored.minimized, false); assert.equal(restored.x, beforeMinimize.x); assert.equal(restored.y, beforeMinimize.y);
+
+  send({ type: 'demo-opacity', surface: 'quick', percent: 63 });
+  const transparent = await state('quick'); assert.equal(transparent.opacityPercent, 63); assert.equal(transparent.contentOpacity, 0.63);
+  assert.equal((await state('selection')).opacityPercent, 100, 'opacity is per window');
+  send({ type: 'demo-close', surface: 'quick' }); send({ type: 'show-quick' });
+  assert.equal((await state('quick')).contentOpacity, 0.63, 'reopening preserves chosen opacity');
+  send({ type: 'demo-opacity', surface: 'quick', percent: 5 }); assert.equal((await state('quick')).contentOpacity, 0.2);
+  send({ type: 'demo-opacity', surface: 'quick', percent: 200 }); assert.equal((await state('quick')).contentOpacity, 1);
 
   send({ type: 'settings', settings: validateSettings({ enabled: true, theme: 'dark' }) });
   console.log(await capture('quick', 'quick-dark'));
