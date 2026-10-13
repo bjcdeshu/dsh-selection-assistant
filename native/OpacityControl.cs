@@ -8,6 +8,7 @@ using P = DshSelectionAssistant.Program;
 
 namespace DshSelectionAssistant {
   internal sealed class OpacityControl {
+    internal event Action<double> Changed;
     internal readonly Button Button;
     readonly Window Owner;
     readonly Popup Flyout;
@@ -30,6 +31,7 @@ namespace DshSelectionAssistant {
         if (shell != null) shell.SetContentOpacity(Slider.Value / 100.0);
         ValueLabel.Text = Math.Round(Slider.Value) + "%";
         Button.ToolTip = "透明度 · " + Math.Round(Slider.Value) + "% 不透明";
+        if (Changed != null) Changed(Slider.Value);
       };
       body.Children.Add(Slider);
       var restore = P.Button("恢复 100%", delegate { Slider.Value = 100; }, "恢复完全不透明");

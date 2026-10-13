@@ -32,6 +32,11 @@ async function hostHarness(catalog = async () => [], execute = async () => {}) {
   await sandbox.start({ effect: fn => fn(), logger: () => ({ warn() {}, info() {} }) });
   return { receive, frames };
 }
+test('UI preferences use the active settings profile rather than the native build directory', async () => {
+  const host = await hostHarness();
+  host.receive({ type: 'ready' }); await flush();
+  assert.equal(host.frames.at(-1).windowStateFile, join('/fake', 'window-state.json'));
+});
 // Regression: evaluating settings before await leaked an old enabled snapshot
 // back into the companion after a newer pause had already been acknowledged.
 test('slow model catalog cannot undo a newer pause or model setting', async () => {

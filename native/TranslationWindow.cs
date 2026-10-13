@@ -22,7 +22,8 @@ namespace DshSelectionAssistant {
     readonly TextBox Input;
     readonly RichTextBox Result;
     readonly TextBlock Status, Title, Count, Route, EmptyText;
-    readonly ComboBox Language;
+    readonly LanguagePicker Language;
+    internal string TargetLanguage { get { return Language.Value; } }
     readonly Button Stop, Translate, Retry, Copy, Pin;
     readonly Border SourceBox;
     readonly FrameworkElement LanguageRow, EmptyResult, Placeholder;
@@ -94,7 +95,7 @@ namespace DshSelectionAssistant {
       Result = new RichTextBox { IsReadOnly = true, IsDocumentEnabled = false, IsUndoEnabled = false, BorderThickness = new Thickness(0), Background = Brushes.Transparent, Foreground = P.Ink, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Padding = new Thickness(0) };
       Result.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "译文或结果");
       Count = P.Text("0 / " + P.Num(P.Config, "maxChars", 12000) + " 字", 11, P.Muted); Count.Margin = new Thickness(0);
-      Language = P.Combo("自动中英互译", "简体中文", "English", "日本語", "한국어", "繁體中文"); Language.Width = 142; Language.MinHeight = 28; Language.Margin = new Thickness(0); Language.FontSize = 12;
+      Language = new LanguagePicker(); Language.Width = 142; Language.MinHeight = 28; Language.Margin = new Thickness(0); Language.FontSize = 12;
       Language.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, "目标语言");
       Translate = P.Button("", Submit, "翻译 · Ctrl+Enter"); Translate.Content = Visuals.Label("translate", "翻译", 14); Translate.Background = P.Hover; Translate.Foreground = P.Accent; Translate.Padding = new Thickness(10, 5, 10, 5); Translate.Margin = new Thickness(8, 0, 0, 0);
 
@@ -142,17 +143,29 @@ namespace DshSelectionAssistant {
         DockPanel.SetDock(SourceBox, Dock.Top); body.Children.Add(SourceBox); body.Children.Add(resultHost); layout.Children.Add(body);
       }
       Window.Content = Visuals.Shell(layout);
+      var saved = P.Preferences == null ? null : P.Preferences.Get(Surface);
+      if (saved != null) {
+        Window.Width = Math.Max(Window.MinWidth, saved.Width); Window.Height = Math.Max(Window.MinHeight, saved.Height);
+        Transparency.SetPercent(saved.Opacity); Resized = true;
+      }
+      Transparency.Changed += delegate { SaveWindowPreferences(); };
+      Window.SizeChanged += delegate { if (Resized && Window.IsVisible) SaveWindowPreferences(); };
       Window.PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
+        if (Language.IsPopupOpen) return;
         if (e.Key == Key.Escape) { if (Busy || Awaiting) StopRun(); else Close(); e.Handled = true; }
         else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0) { Submit(); e.Handled = true; }
       };
-      Native.EnableResize(Window, 10, delegate { Resized = true; });
+      Native.EnableResize(Window, 10, delegate { Resized = true; Window.Dispatcher.BeginInvoke(new System.Action(SaveWindowPreferences)); });
       Window.Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) { if (!P.Closing) { e.Cancel = true; Close(); } };
       RenderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
       RenderTimer.Tick += delegate { RenderTimer.Stop(); Paint(false); };
       CopyTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
       CopyTimer.Tick += delegate { CopyTimer.Stop(); Copy.Content = Visuals.Icon("copy", 16); };
       RefreshSettings(); ResetDocument(); UpdateButtons();
+    }
+    void SaveWindowPreferences() {
+      if (P.Preferences == null || P.Closing || Window.WindowState != WindowState.Normal) return;
+      P.Preferences.Update(Surface, Window.Width, Window.Height, Transparency.Percent);
     }
     void TogglePin() {
       Pinned = !Pinned; Window.Topmost = Pinned;
@@ -167,9 +180,7 @@ namespace DshSelectionAssistant {
       if (Language != null && !Busy && LastDefaultLanguage != P.Str(P.Config, "targetLanguage", "auto")) {
         string language = P.Str(P.Config, "targetLanguage", "auto");
         LastDefaultLanguage = language;
-        string label = language == "auto" ? Convert.ToString(Language.Items[0]) : language;
-        if (!Language.Items.Contains(label)) Language.Items.Add(label);
-        Language.SelectedItem = label;
+        Language.SetValue(language);
       }
       UpdateButtons();
     }
@@ -188,10 +199,12 @@ namespace DshSelectionAssistant {
       RenderTimer.Stop(); RunId = P.Str(message, "id"); Original = P.Str(message, "text"); Action = P.Str(message, "action", "translate");
       Awaiting = false; Busy = true; Buffer.Clear(); ResetDocument();
       if (Surface == "selection") { Input.Text = Original; Title.Text = Action == "translate" ? "翻译" : Action == "explain" ? "解释" : "总结"; ActionIcon.Content = Visuals.Icon(Action, 14); }
-      int selectedLanguage = Language.SelectedIndex; Language.Items[0] = Action == "translate" ? "自动中英互译" : "默认语言"; Language.SelectedIndex = Math.Max(0, selectedLanguage);
+      // A fresh selection uses the Host's configured language. Manual retries
+      // instead carry the language picked in this window with their request.
+      if (P.Str(message, "source") != "manual") Language.SetValue(P.Str(P.Config, "targetLanguage", "auto"));
+      Language.AutoLabel = Action == "translate" ? "自动中英互译" : "默认语言";
       Status.Text = "正在连接模型…"; UpdateButtons();
       if (Surface == "quick") { if (!wasVisible) Show(); return; }
-      if (!Resized) Window.Height = 420;
       Visuals.Show(Window); Window.UpdateLayout();
       if (P.Str(message, "source") != "manual" && (!wasVisible || (!Pinned && !Moved))) {
         AnchorX = P.Num(message, "x"); AnchorY = P.Num(message, "y");
@@ -218,7 +231,7 @@ namespace DshSelectionAssistant {
       if (string.IsNullOrWhiteSpace(text)) { Status.Text = "请先输入或粘贴文字"; return; }
       if (text.Length > P.Num(P.Config, "maxChars", 12000)) { Status.Text = "文字过长，请缩短后重试"; return; }
       StopRun(false); Awaiting = true; PendingId = Guid.NewGuid().ToString("N"); Status.Text = "正在提交…"; UpdateButtons();
-      string target = Language == null ? P.Str(P.Config, "targetLanguage", "auto") : Language.SelectedIndex == 0 ? "auto" : Convert.ToString(Language.SelectedItem);
+      string target = Language.Value;
       P.Send("submit", "id", PendingId, "surface", Surface, "text", text, "action", Surface == "quick" ? "translate" : Action, "targetLanguage", target);
     }
     internal void StopRun() { StopRun(true); }
@@ -240,7 +253,8 @@ namespace DshSelectionAssistant {
     void CopyAnswer() { if (Buffer.Length == 0) return; try { Clipboard.SetText(Answer); Status.Text = "已复制"; Copy.Content = Visuals.Icon("check", 16); CopyTimer.Stop(); CopyTimer.Start(); } catch { Status.Text = "剪贴板暂时忙，请重试"; } }
     internal void Clear() { StopRun(false); Input.Clear(); Original = ""; Buffer.Clear(); ResetDocument(); Status.Text = "输入或粘贴文字"; UpdateButtons(); }
     internal void Close() {
-      Transparency.Close(); StopRun(false); Visuals.Hide(Window);
+      SaveWindowPreferences(); if (P.Preferences != null) P.Preferences.Flush();
+      Language.ClosePopup(); Transparency.Close(); StopRun(false); Visuals.Hide(Window);
       // Quick input and output live only in this process until Clear or exit.
       if (Surface == "selection") { Input.Clear(); Original = ""; Buffer.Clear(); ResetDocument(); Moved = false; HasPosition = false; }
     }
@@ -291,6 +305,11 @@ namespace DshSelectionAssistant {
       if (atBottom) Result.ScrollToEnd(); UpdateButtons();
     }
     internal void DemoOpacity(double value) { Transparency.SetPercent(value); }
+    internal void DemoLanguage(string value) { Language.SetValue(value); }
+    internal void DemoResize(double width, double height) {
+      Resized = true; Window.Width = Math.Max(Window.MinWidth, width); Window.Height = Math.Max(Window.MinHeight, height);
+      Window.UpdateLayout(); SaveWindowPreferences();
+    }
     internal void DemoInput(string text) { Input.Text = text; }
     internal void DemoPin() { Pin.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); }
   }

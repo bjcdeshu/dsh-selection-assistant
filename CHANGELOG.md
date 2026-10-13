@@ -5,6 +5,9 @@
 - Raise result windows on explicit actions, with persistent pin behavior and compact vector controls.
 - Keep text outside shadow-effect buffers, round layout to display pixels and capture previews at the actual monitor DPI.
 - Add a per-window 20–100% opacity slider and reliable native edge/corner resizing with minimum-size limits.
+- Persist each translation window's dimensions and opacity across DSH restarts in a separate atomic preference file; restore in DIPs and fit the current monitor work area.
+- Offer 96 target languages plus custom values in one searchable picker shared by settings and both translation windows. Search Chinese, English and native names without issuing a model request.
+- Keep the result window's language label aligned with the global target on a fresh selection, while manual retries use the window's chosen language.
 
 - Compact toolbar, separate editable quick translation window, consistent light/dark/system appearance, accessible controls and keyboard navigation.
 - Tray and configurable shortcut (default Ctrl+Alt+T); manual translation remains available while selection monitoring is paused. Clipboard is read only on an explicit paste.

@@ -135,9 +135,10 @@ namespace DshSelectionAssistant {
       w.WindowStartupLocation = WindowStartupLocation.Manual;
       SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, 0x0015); // NOSIZE | NOZORDER | NOACTIVATE
       w.UpdateLayout();
+      var area = Forms.Screen.FromPoint(new System.Drawing.Point(x, y)).WorkingArea;
+      FitToWorkArea(w, area);
       Rect actual; GetWindowRect(h, out actual);
       int width = actual.Right - actual.Left, height = actual.Bottom - actual.Top;
-      var area = Forms.Screen.FromPoint(new System.Drawing.Point(x, y)).WorkingArea;
       int gap = Math.Max(8, (int)Math.Round(8 * Scale(w)));
       int nx = centered ? area.Left + (area.Width - width) / 2 : x + gap;
       int ny = centered ? area.Top + (area.Height - height) / 2 : y + gap + 4;
@@ -149,9 +150,16 @@ namespace DshSelectionAssistant {
     public static void KeepOnScreen(Window w) {
       Rect r; GetWindowRect(Handle(w), out r);
       var area = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(r.Left, r.Top, r.Right-r.Left, r.Bottom-r.Top)).WorkingArea;
+      FitToWorkArea(w, area); GetWindowRect(Handle(w), out r);
       int x = Math.Max(area.Left, Math.Min(r.Left, area.Right - (r.Right-r.Left)));
       int y = Math.Max(area.Top, Math.Min(r.Top, area.Bottom - (r.Bottom-r.Top)));
       SetWindowPos(Handle(w), IntPtr.Zero, x, y, 0, 0, 0x0015);
+    }
+    static void FitToWorkArea(Window w, System.Drawing.Rectangle area) {
+      double scale = Scale(w);
+      w.Width = Math.Min(w.Width, Math.Max(w.MinWidth, area.Width / scale - 16));
+      w.Height = Math.Min(w.Height, Math.Max(w.MinHeight, area.Height / scale - 16));
+      w.UpdateLayout();
     }
   }
 }

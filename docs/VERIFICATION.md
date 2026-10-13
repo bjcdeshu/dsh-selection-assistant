@@ -2,6 +2,19 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-13 follow-up — persistent window preferences and languages
+
+The final native build is `4d6d510da42affe7`. This pass completes restart persistence and expands the language controls requested after the display/resize work below.
+
+- Each translation window saves its width/height in DIPs and opacity independently in `window-state.json`, next to the active profile's `settings.json`. The Host passes the absolute path through the companion; it is independent of working directory and native build hash. Changes are debounced and atomically replaced, with close/exit/session-ending flushes. Minimized sizes are excluded and restored sizes fit the monitor work area subject to minimum dimensions.
+- **30 persistence checks** pass, covering independent process reads/writes, different cache paths, corrupt/oversized files, finite numeric bounds, failure/retry, disposal and disabled persistence in previews. **53 native integration assertions** pass across two separate UI processes, including changed executable/cache/cwd, per-window state, minimizing/closing, no saved source/output text, and language request/label alignment.
+- **96 target-language options**, plus automatic and custom values, are shared by settings, selection results and quick translation. Search accepts Chinese, English and native names. **236 language checks** pass, including actual WPF popup/filter/click/key behavior and legacy/custom values. These tests establish UI/request support, not equal model accuracy in every language.
+- **26 JS tests**, native compilation, the full synthetic UI smoke/placement suite and **69 native resize checks** pass. Fresh selection results reflect the configured target, while manual retries retain the chosen language. Synthetic screenshots in `docs/images` were refreshed from the final build.
+- Live DSH: searched `français`, selected French and submitted the synthetic sentence “The cat is sleeping on the sofa.” The configured model returned “Le chat dort sur le canapé.” without changing the global language/model settings.
+- Live restart: dragged the quick window to **700 × 470.4 DIP**, set opacity to **65%**, confirmed automatic persistence, then normally exited and relaunched DSH. The new helper (also a different build cache) reopened at the same size and **65%**, with empty input/output. Both shortcuts registered successfully. The temporary test opacity was restored to **100%** afterward; dimensions remain saved.
+
+The display/resize notes below describe the previous build. Their statement that opacity reset on restart is superseded by this pass. Mixed-DPI hardware and language-by-language model quality remain outside these checks.
+
 ## 2026-10-13 follow-up — clarity, opacity and resizing
 
 The user found the revised layout broadly acceptable, then reported soft text and unusable resizing and requested Cherry-like opacity control. The current native build is `1a1c4b3b5b50e54e`, loaded in the existing DSH plugin through its toggle.

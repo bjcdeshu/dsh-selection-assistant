@@ -9,7 +9,7 @@ import { ACTIONS } from '../src/prompts.js';
 
 /** Run the actual companion logic with fake pipes/hook. Never spawns or listens. */
 async function harness() {
-  const handlers = new Map(), messages = [], timers = new Map(); let clock = 0, hook, starts = 0;
+  const handlers = new Map(), messages = [], timers = new Map(), spawns = []; let clock = 0, hook, starts = 0;
   const fakeProcess = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: new EventEmitter(), env: {}, exit: () => {} });
   const ui = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: {}, stderr: new EventEmitter(), exitCode: null, kill: () => {} });
   class Hook extends EventEmitter {
@@ -19,7 +19,7 @@ async function harness() {
   }
   const code = (await readFile(new URL('../src/companion.js', import.meta.url), 'utf8')).replace(/^import .*;\r?\n/gm, '');
   const sandbox = {
-    createRequire: () => () => Hook, spawn: () => ui, process: fakeProcess,
+    createRequire: () => () => Hook, spawn: (...args) => { spawns.push(args); return ui; }, process: fakeProcess,
     attachFrames: (stream, handle) => { handlers.set(stream, handle); },
     sendFrame: (stream, message) => { messages.push({ to: stream === fakeProcess.stdout ? 'host' : 'ui', ...message }); },
     validateSettings, normalizeSelection, SelectionState, ACTIONS, helperEnvironment: () => ({}),
@@ -28,14 +28,19 @@ async function harness() {
   vm.runInNewContext(code.replace('import.meta.url', '"test"'), sandbox, { filename: 'companion.vm.js' });
   const host = message => handlers.get(fakeProcess.stdin)(message);
   const surface = message => handlers.get(ui.stdout)(message);
-  host({ type: 'init', nativeExe: 'fake.exe', settings: validateSettings({ enabled: true }) });
+  host({ type: 'init', nativeExe: 'fake.exe', windowStateFile: 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', settings: validateSettings({ enabled: true }) });
   const select = text => {
     hook.emit('text-selection', { text, programName: 'notepad.exe', endBottom: { x: 1, y: 2 } });
     for (const [id, fn] of [...timers]) { timers.delete(id); fn(); }
     return messages.filter(x => x.to === 'ui' && x.type === 'selection').at(-1).id;
   };
-  return { host, surface, select, messages, starts: () => starts };
+  return { host, surface, select, messages, spawns, starts: () => starts };
 }
+
+test('native UI receives the host profile state path as one argument, outside the build cache', async () => {
+  const h = await harness();
+  assert.deepEqual(Array.from(h.spawns[0][1]), ['--state-file', 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json']);
+});
 
 // Regression proven by review: cancelling A after B was clicked cancelled B.
 test('late cancellation is bound to the requested id, not the latest run', async () => {

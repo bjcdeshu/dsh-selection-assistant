@@ -29,6 +29,7 @@ namespace DshSelectionAssistant {
     static HwndSource HotkeyWindow;
     static DispatcherTimer ToolbarTimer;
     internal static Dictionary<string, object> Config;
+    internal static WindowPreferences Preferences;
     static object[] Models = new object[0];
     static string SelectionId;
     internal static bool Closing;
@@ -40,7 +41,8 @@ namespace DshSelectionAssistant {
     static Button SaveButton;
     static Forms.ToolStripMenuItem ToggleItem;
     static CheckBox EnabledBox, ClipboardBox;
-    static ComboBox TriggerBox, LanguageBox, ModelBox, ThemeBox, QuickHotkeyBox;
+    static ComboBox TriggerBox, ModelBox, ThemeBox, QuickHotkeyBox;
+    static LanguagePicker LanguageBox;
     static TextBox ProviderBox, ModelIdBox, BlockedBox;
     static Dictionary<string, TextBox> PromptBoxes = new Dictionary<string, TextBox>();
     internal static SolidColorBrush Ink = Theme.Brush("Ink", "#1A1A1A"), Muted = Theme.Brush("Muted", "#707070"), Accent = Theme.Brush("Accent", "#159B68"), Line = Theme.Brush("Line", "#E6E6E6"), Surface = Theme.Brush("Surface", "#FFFFFF"), Soft = Theme.Brush("Soft", "#F5F5F5"), Hover = Theme.Brush("Hover", "#EFEFEF");
@@ -61,11 +63,16 @@ namespace DshSelectionAssistant {
       Demo = args.Length > 0 && args[0] == "--demo";
       Visuals.AnimationsEnabled = !Demo;
       if (Demo && args.Length > 1) PreviewDirectory = Path.GetFullPath(args[1]);
+      string stateFile = null;
+      for (int i = 0; i + 1 < args.Length; i++) if (args[i] == "--state-file") stateFile = args[i + 1];
       // A WinExe has no console code page. Open inherited pipes explicitly;
       // Console.InputEncoding/OutputEncoding would call SetConsoleCP and fail.
       Console.SetIn(new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false)));
       Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true });
       App = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+      Preferences = new WindowPreferences(stateFile);
+      App.Exit += delegate { Preferences.Dispose(); };
+      App.SessionEnding += delegate { Preferences.Flush(); };
       App.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e) { e.Handled = true; if (Demo) Send("demo-error", "message", e.Exception.ToString()); Health("ui-error", e.Exception.GetType().Name); Notice("界面操作未完成，请关闭小窗后重试。"); };
       App.Startup += delegate {
         SetupStyles(); SetupTray(); SetupHotkey();
@@ -206,6 +213,8 @@ namespace DshSelectionAssistant {
       if (Demo && type == "demo-monitors") { Send("demo-monitors", "screens", Forms.Screen.AllScreens.Select(s => new { x = s.WorkingArea.Left, y = s.WorkingArea.Top, width = s.WorkingArea.Width, height = s.WorkingArea.Height }).ToArray()); return; }
       if (Demo && type == "demo-submit") { GetPanel(surface).Submit(); return; }
       if (Demo && type == "demo-opacity") { GetPanel(surface).DemoOpacity(Num(message, "percent", 100)); return; }
+      if (Demo && type == "demo-resize") { GetPanel(surface).DemoResize(Num(message, "width"), Num(message, "height")); return; }
+      if (Demo && type == "demo-language") { GetPanel(surface).DemoLanguage(Str(message, "value", "auto")); return; }
       if (Demo && type == "demo-minimize") { GetPanel(surface).Window.WindowState = WindowState.Minimized; return; }
       if (Demo && type == "demo-stop") { GetPanel(surface).StopRun(); return; }
       if (Demo && type == "demo-close") { GetPanel(surface).Window.Close(); return; }
@@ -214,7 +223,7 @@ namespace DshSelectionAssistant {
         Window window = panel == null ? Toolbar : panel.Window;
         Native.Rect rect = new Native.Rect(); if (window != null) { window.UpdateLayout(); Native.GetWindowRect(Native.Handle(window), out rect); }
         Send("demo-state", "nonce", Str(message, "nonce"), "runId", panel == null ? null : panel.RunId, "busy", panel != null && panel.Busy, "visible", window != null && window.IsVisible, "answer", panel == null ? "" : panel.Answer,
-          "x", rect.Left, "y", rect.Top, "width", rect.Right-rect.Left, "height", rect.Bottom-rect.Top, "dpi", window == null ? 96 : Native.Scale(window)*96, "topmost", window != null && window.Topmost, "minimized", window != null && window.WindowState == WindowState.Minimized, "opacityPercent", panel == null ? 100 : panel.OpacityPercent, "contentOpacity", window != null && window.Content is UIElement ? ((UIElement)window.Content).Opacity : 1, "input", panel == null ? "" : panel.InputText);
+          "x", rect.Left, "y", rect.Top, "width", rect.Right-rect.Left, "height", rect.Bottom-rect.Top, "widthDip", window == null ? 0 : window.Width, "heightDip", window == null ? 0 : window.Height, "dpi", window == null ? 96 : Native.Scale(window)*96, "topmost", window != null && window.Topmost, "minimized", window != null && window.WindowState == WindowState.Minimized, "opacityPercent", panel == null ? 100 : panel.OpacityPercent, "contentOpacity", window != null && window.Content is UIElement ? ((UIElement)window.Content).Opacity : 1, "targetLanguage", panel == null ? "auto" : panel.TargetLanguage, "input", panel == null ? "" : panel.InputText);
         return;
       }
       if (type == "settings") {
@@ -303,8 +312,8 @@ namespace DshSelectionAssistant {
       var general = new StackPanel { Margin = new Thickness(12) };
       EnabledBox = new CheckBox { Content = "启用全局划词", IsChecked = Bool(Config, "enabled"), Margin = new Thickness(0, 5, 0, 12) }; general.Children.Add(EnabledBox);
       TriggerBox = Combo("选中文字自动出现工具条", "仅使用 Ctrl+Alt+D 呼出工具条"); TriggerBox.SelectedIndex = Str(Config, "trigger") == "hotkey" ? 1 : 0; AddField(general, "触发方式（自动模式也支持快捷键）", TriggerBox);
-      LanguageBox = Combo("自动中英互译 / 中文解释与总结", "简体中文", "English", "日本語", "한국어", "繁體中文");
-      string target = Str(Config, "targetLanguage", "auto"); if (target != "auto") { LanguageBox.SelectedItem = target; if (LanguageBox.SelectedIndex < 0) { LanguageBox.Items.Add(target); LanguageBox.SelectedItem = target; } }
+      LanguageBox = new LanguagePicker("自动中英互译 / 中文解释与总结") { MinHeight = 30, Margin = new Thickness(0, 2, 0, 7) };
+      LanguageBox.SetValue(Str(Config, "targetLanguage", "auto"));
       AddField(general, "输出语言", LanguageBox);
       ThemeBox = Combo("跟随系统", "浅色", "深色"); ThemeBox.SelectedIndex = Str(Config, "theme") == "dark" ? 2 : Str(Config, "theme") == "light" ? 1 : 0; AddField(general, "外观", ThemeBox);
       QuickHotkeyBox = Combo("Ctrl+Alt+T", "Ctrl+Shift+T", "Alt+Shift+T", "关闭快捷键"); QuickHotkeyBox.SelectedIndex = Str(Config, "quickHotkey", "Ctrl+Alt+T") == "none" ? 3 : Math.Max(0, QuickHotkeyBox.Items.IndexOf(Str(Config, "quickHotkey", "Ctrl+Alt+T"))); AddField(general, "快捷翻译（也可从托盘打开）", QuickHotkeyBox);
@@ -351,7 +360,7 @@ namespace DshSelectionAssistant {
         { "quickHotkey", QuickHotkeyBox.SelectedIndex == 3 ? "none" : Convert.ToString(QuickHotkeyBox.SelectedItem) },
         { "enabled", EnabledBox.IsChecked == true }, { "clipboardFallback", ClipboardBox.IsChecked == true },
         { "trigger", TriggerBox.SelectedIndex == 1 ? "hotkey" : "auto" },
-        { "targetLanguage", LanguageBox.SelectedIndex == 0 ? "auto" : Convert.ToString(LanguageBox.SelectedItem) },
+        { "targetLanguage", LanguageBox.Value },
         { "provider", ProviderBox.Text.Trim() }, { "model", ModelIdBox.Text.Trim() },
         { "blockedApps", BlockedBox.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).Where(s => s.Length > 0).ToArray() },
         { "prompts", prompts }
@@ -360,6 +369,7 @@ namespace DshSelectionAssistant {
     }
     static void Shutdown() {
       if (Closing) return; Closing = true;
+      if (Preferences != null) Preferences.Flush();
       if (HotkeyWindow != null) { Native.UnregisterHotKey(HotkeyWindow.Handle, 1); Native.UnregisterHotKey(HotkeyWindow.Handle, 2); HotkeyWindow.Dispose(); }
       if (Tray != null) { Tray.Visible = false; Tray.Dispose(); }
       if (ToolbarTimer != null) ToolbarTimer.Stop();

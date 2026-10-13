@@ -51,8 +51,9 @@ function begin(request, target) {
   surface({ type: 'begin', ...request, surface: target });
   host({ type: 'run', ...request, surface: target });
 }
-function startUi(executable) {
-  ui = spawn(executable, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: helperEnvironment() });
+function startUi(executable, windowStateFile) {
+  const args = typeof windowStateFile === 'string' && windowStateFile ? ['--state-file', windowStateFile] : [];
+  ui = spawn(executable, args, { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: helperEnvironment() });
   ui.stdin.on('error', () => {});
   ui.stderr.on('data', () => {});
   ui.once('error', () => { host({ type: 'fatal', code: 'native-ui-start' }); shutdown(); });
@@ -92,7 +93,7 @@ async function shutdown() {
 }
 attachFrames(process.stdin, message => {
   if (message.type === 'init' && !settings) {
-    settings = validateSettings(message.settings); startUi(message.nativeExe); configure();
+    settings = validateSettings(message.settings); startUi(message.nativeExe, message.windowStateFile); configure();
   } else if (message.type === 'settings') {
     const previous = settings;
     settings = validateSettings(message.settings);
