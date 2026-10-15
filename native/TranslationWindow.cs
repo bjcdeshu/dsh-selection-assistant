@@ -151,7 +151,16 @@ namespace DshSelectionAssistant {
       Transparency.Changed += delegate { SaveWindowPreferences(); };
       Window.SizeChanged += delegate { if (Resized && Window.IsVisible) SaveWindowPreferences(); };
       Window.PreviewKeyDown += delegate(object sender, KeyEventArgs e) {
-        if (Language.IsPopupOpen) return;
+        // Popup input can tunnel through its owner before reaching the popup.
+        // Dismiss the flyout first, without stopping a run or hiding the window.
+        if (Transparency.IsPopupOpen) {
+          if (e.Key == Key.Escape) { Transparency.Close(); Transparency.Button.Focus(); e.Handled = true; }
+          return;
+        }
+        if (Language.IsPopupOpen) {
+          if (e.Key == Key.Escape) { Language.ClosePopup(); Language.Focus(); e.Handled = true; }
+          return;
+        }
         if (e.Key == Key.Escape) { if (Busy || Awaiting) StopRun(); else Close(); e.Handled = true; }
         else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Control) != 0) { Submit(); e.Handled = true; }
       };
@@ -185,6 +194,7 @@ namespace DshSelectionAssistant {
       UpdateButtons();
     }
     internal void Show() {
+      P.RefreshTheme();
       if (Window.WindowState == WindowState.Minimized) Window.WindowState = WindowState.Normal;
       Visuals.Show(Window); Window.UpdateLayout();
       if (!HasPosition) { Native.Point p; Native.GetCursorPos(out p); Native.Place(Window, p.X, p.Y, true); HasPosition = true; }

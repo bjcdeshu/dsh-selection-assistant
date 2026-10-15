@@ -15,6 +15,7 @@ namespace DshSelectionAssistant {
     readonly Slider Slider;
     readonly TextBlock ValueLabel;
     internal double Percent { get { return Slider.Value; } }
+    internal bool IsPopupOpen { get { return Flyout.IsOpen; } }
 
     internal OpacityControl(Window owner) {
       Owner = owner;

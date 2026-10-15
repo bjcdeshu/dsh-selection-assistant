@@ -2,6 +2,18 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-15 follow-up — automatic theme and selection responsiveness
+
+The native build is `db14fa67df771cae`. The user reported that a window kept its night theme until Settings was opened, and that selecting text sometimes needed several attempts (probably in a browser).
+
+- The previous theme listener used the message-only hotkey window, which cannot receive Windows broadcasts. Theme updates now use `SystemEvents`, marshal onto the UI dispatcher and coalesce notifications. Resume/unlock, window opening/activation and a 30-second fallback also check the current preference. Explicit light/dark choices remain fixed; unchanged colors do not repaint. See [Microsoft's message-only window explanation](https://devblogs.microsoft.com/oldnewthing/20171218-00/?p=97595) and [SystemEvents lifetime requirements](https://learn.microsoft.com/en-us/dotnet/api/microsoft.win32.systemevents.userpreferencechanged).
+- **103 theme assertions** pass. Six real `WM_SETTINGCHANGE` messages were sent only to the fixture's own .NET event window. The production watcher updated existing result/quick windows and sealed templates without opening Settings, recreating windows or changing text/size/opacity. Fixed themes, missed-notification fallback, dispatcher delivery and disposal were checked. Tests used an injected theme reader and non-activating offscreen windows; they did not change the user's Windows theme or registry.
+- **23 popup keyboard checks** pass. Escape dismisses opacity/language flyouts first, including when focus remains in the owner; translation continues and the window remains open. Without a flyout, existing stop/close behavior is retained. The old opacity path fails the regression.
+- Selection deduplication now applies only to a live toolbar, so quickly reselecting the same text after dismissal/consumption is accepted. A selection arriving before native UI startup waits for settings and shows only the latest retained snapshot. Delayed display checks the current ID and starts its expiry when shown. The six added regressions fail against the prior source and pass after these fixes.
+- **32 JS tests**, native compilation and the synthetic UI smoke pass. The smoke covers manual input, pause, both themes, pinning, close/reopen, cancellation/late frames and nine toolbar placements.
+- Browser reliability is not claimed to be universally solved: `selection-hook` 2.1.1 can drop mouse events while its automatic UIA retrieval is busy, and its public API has no asynchronous retry/delay option. This pass fixes confirmed application-level suppression/startup races without adding synchronous automatic reads or clipboard simulation. Real browser selection under the new code remains to be confirmed.
+- The running DSH plugin has not yet been reloaded: desktop automation was stopped by physical Escape during the reload workflow. Reload the plugin through its off/on switch (Host JS is unchanged). User settings and the saved window-state file were not modified.
+
 ## 2026-10-13 follow-up — toolbar placement and host icon
 
 The native build is `26a745c629b497c2`. The user's photos showed a preference for Cherry's toolbar extending to the left of the release point and identified the generic Windows icon used by our translation windows.

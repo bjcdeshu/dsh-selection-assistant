@@ -28,6 +28,7 @@ namespace DshSelectionAssistant {
     static Forms.NotifyIcon Tray;
     static HwndSource HotkeyWindow;
     static DispatcherTimer ToolbarTimer;
+    static ThemeWatcher Appearance;
     internal static Dictionary<string, object> Config;
     internal static WindowPreferences Preferences;
     static HostIcon Icons;
@@ -76,11 +77,13 @@ namespace DshSelectionAssistant {
       App = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
       Icons = HostIcon.Load(iconSource);
       Preferences = new WindowPreferences(stateFile);
-      App.Exit += delegate { Preferences.Dispose(); Icons.Dispose(); };
+      App.Exit += delegate { if (Appearance != null) Appearance.Dispose(); Preferences.Dispose(); Icons.Dispose(); };
+      App.Activated += delegate { RefreshTheme(); };
       App.SessionEnding += delegate { Preferences.Flush(); };
       App.DispatcherUnhandledException += delegate(object sender, DispatcherUnhandledExceptionEventArgs e) { e.Handled = true; if (Demo) Send("demo-error", "message", e.Exception.ToString()); Health("ui-error", e.Exception.GetType().Name); Notice("界面操作未完成，请关闭小窗后重试。"); };
       App.Startup += delegate {
         SetupStyles(); SetupTray(); SetupHotkey();
+        Appearance = new ThemeWatcher(App.Dispatcher, delegate { return Str(Config, "theme", "system"); }, ApplyTheme);
         ToolbarTimer = new DispatcherTimer(); ToolbarTimer.Tick += delegate { HideToolbar(); };
         var reader = new Thread(ReadInput) { IsBackground = true }; reader.Start();
         Send("ready");
@@ -116,11 +119,8 @@ namespace DshSelectionAssistant {
       App.Resources.MergedDictionaries.Add(styles);
     }
 
-    static void ApplyTheme() {
-      bool dark = Str(Config, "theme") == "dark";
-      if (Str(Config, "theme", "system") == "system") {
-        try { dark = Convert.ToInt32(Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", 1)) == 0; } catch {}
-      }
+    internal static void RefreshTheme() { if (Appearance != null) Appearance.Refresh(); }
+    static void ApplyTheme(bool dark) {
       Theme.Set("Ink", dark ? "#E8E8E8" : "#1A1A1A");
       Theme.Set("Muted", dark ? "#A3A3A3" : "#707070");
       Theme.Set("Surface", dark ? "#1F1F1F" : "#FFFFFF");
@@ -163,7 +163,6 @@ namespace DshSelectionAssistant {
       HotkeyWindow.AddHook(delegate(IntPtr h, int msg, IntPtr wp, IntPtr lp, ref bool handled) {
         if (msg == 0x0312 && wp.ToInt32() == 1) { Native.Point cursor; Native.GetCursorPos(out cursor); Send("hotkey", "x", cursor.X, "y", cursor.Y); handled = true; }
         if (msg == 0x0312 && wp.ToInt32() == 2) { ShowQuick(); handled = true; }
-        if (msg == 0x001A && Config != null) ApplyTheme();
         return IntPtr.Zero;
       });
     }
@@ -233,7 +232,7 @@ namespace DshSelectionAssistant {
         return;
       }
       if (type == "settings") {
-        Config = Obj(message, "settings"); ApplyTheme();
+        Config = Obj(message, "settings"); RefreshTheme();
         object models; if (message.TryGetValue("models", out models) && models is object[]) { Models = (object[])models; PopulateModels(); }
         ToggleItem.Text = Bool(Config, "enabled") ? "暂停全局划词" : "启用全局划词";
         Tray.Text = "DSH 划词助手 · " + (Bool(Config, "enabled") ? "已启用" : "已暂停");
@@ -258,6 +257,7 @@ namespace DshSelectionAssistant {
 
     static void ShowToolbar(Dictionary<string, object> message) {
       if (Config == null || !Bool(Config, "enabled")) return;
+      RefreshTheme();
       HideToolbar(); SelectionId = Str(message, "id");
       if (Toolbar == null) {
         Toolbar = WindowBase(184, 48, true); Toolbar.Title = "DSH Selection Toolbar";
@@ -302,6 +302,7 @@ namespace DshSelectionAssistant {
     internal static void ShowSettings() {
       HideToolbar();
       if (Config == null) return;
+      RefreshTheme();
       if (Settings != null) { Settings.Show(); Settings.Activate(); Send("settings-get"); return; }
       Settings = new Window { Title = "DSH 划词助手 · 设置", Width = 560, Height = 620, MinWidth = 440, MinHeight = 480, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Surface, FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"), Foreground = Ink, Topmost = true };
       if (Icons != null && Icons.WindowImage != null) Settings.Icon = Icons.WindowImage;
@@ -376,6 +377,7 @@ namespace DshSelectionAssistant {
     }
     static void Shutdown() {
       if (Closing) return; Closing = true;
+      if (Appearance != null) Appearance.Dispose();
       if (Preferences != null) Preferences.Flush();
       if (HotkeyWindow != null) { Native.UnregisterHotKey(HotkeyWindow.Handle, 1); Native.UnregisterHotKey(HotkeyWindow.Handle, 2); HotkeyWindow.Dispose(); }
       if (Tray != null) { Tray.Visible = false; Tray.Dispose(); }

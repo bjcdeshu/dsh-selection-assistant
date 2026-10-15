@@ -61,6 +61,39 @@ test('snapshots are consumed once and stale clicks cannot submit', () => {
   assert.equal(state.take('b').text, 'new'); assert.equal(state.take('b'), null);
   state.accept({ ...data, id: 'c', x: 4, y: 4 }, 100); now += 101; assert.equal(state.take('c'), null);
 });
+
+test('deduplication never suppresses a fresh selection after dismissal or consumption', () => {
+  let now = 100; const state = new SelectionState(() => now);
+  const selection = { ...data, id: 'first', x: 3, y: 4 };
+  state.accept(selection, 1000);
+  now += 20;
+  assert.equal(state.accept({ ...selection, id: 'duplicate' }, 1000), null);
+  state.clear();
+  assert.equal(state.accept({ ...selection, id: 'second' }, 1000).id, 'second');
+  state.take('second');
+  assert.equal(state.accept({ ...selection, id: 'third' }, 1000).id, 'third');
+});
+
+test('an expired selection does not suppress the same selection from a new gesture', () => {
+  let now = 100; const state = new SelectionState(() => now);
+  const selection = { ...data, id: 'first', x: 3, y: 4 };
+  state.accept(selection, 50); now += 51;
+  assert.equal(state.accept({ ...selection, id: 'second' }, 1000).id, 'second');
+});
+
+test('toolbar lifetime starts when shown and delayed callbacks cannot revive an older selection', () => {
+  let now = 100; const state = new SelectionState(() => now);
+  state.accept({ ...data, id: 'startup', x: 3, y: 4 }, 100);
+  now += 1000;
+  assert.equal(state.markShown('startup', 500), true);
+  now += 499;
+  assert.equal(state.take('startup').id, 'startup');
+  assert.equal(state.markShown('startup', 500), false);
+  state.accept({ ...data, id: 'new', x: 3, y: 4 }, 100);
+  assert.equal(state.markShown('startup', 500), false);
+  now += 101;
+  assert.equal(state.take('new'), null);
+});
 test('settings reject malformed inputs, unknown keys and unpaired routes', () => {
   for (const value of [null, [], { enabled: 'true' }, { provider: 'only' }, { maxChars: -1 }, { prompts: 'bad' }, { prompts: { execute: 'oops' } }, { token: 'secret' }, { blockedApps: [''] }]) assert.throws(() => validateSettings(value));
   const s = validateSettings({ prompts: { translate: '' } });

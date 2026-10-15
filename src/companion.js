@@ -8,7 +8,7 @@ import { helperEnvironment } from './environment.js';
 
 const require = createRequire(import.meta.url);
 const selections = new SelectionState();
-let settings, ui, hook, showTimer, stopping = false;
+let settings, ui, hook, showTimer, uiReady = false, stopping = false;
 const active = new Map();
 const host = message => sendFrame(process.stdout, message);
 const surface = message => sendFrame(ui?.stdin, message);
@@ -41,8 +41,17 @@ function selected(data, options) {
   if (!selection) { hide(); return; }
   const accepted = selections.accept(selection, settings.toolbarTimeoutMs + settings.toolbarDelayMs);
   if (!accepted) return;
+  scheduleSelection(accepted);
+}
+function scheduleSelection(accepted) {
   clearTimeout(showTimer);
-  showTimer = setTimeout(() => surface({ type: 'selection', id: accepted.id, x: accepted.x, y: accepted.y, expiresMs: settings.toolbarTimeoutMs }), settings.toolbarDelayMs);
+  // Hook startup can beat WPF startup. Keep only the current snapshot until the
+  // window has received its settings; otherwise its Config==null guard drops it.
+  if (!uiReady) return;
+  showTimer = setTimeout(() => {
+    if (!selections.markShown(accepted.id, settings.toolbarTimeoutMs)) return;
+    surface({ type: 'selection', id: accepted.id, x: accepted.x, y: accepted.y, expiresMs: settings.toolbarTimeoutMs });
+  }, settings.toolbarDelayMs);
 }
 function begin(request, target) {
   const previous = active.get(target);
@@ -60,7 +69,10 @@ function startUi(executable, windowStateFile, iconSource) {
   ui.once('error', () => { host({ type: 'fatal', code: 'native-ui-start' }); shutdown(); });
   ui.once('exit', () => shutdown());
   attachFrames(ui.stdout, message => {
-    if (message.type === 'ready') surface({ type: 'settings', settings });
+    if (message.type === 'ready') {
+      surface({ type: 'settings', settings }); uiReady = true;
+      if (selections.current) scheduleSelection(selections.current);
+    }
     else if (message.type === 'action' && ACTIONS.includes(message.action)) {
       const selection = selections.take(message.id);
       if (!selection) return;

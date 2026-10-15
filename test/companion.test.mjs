@@ -8,7 +8,7 @@ import { normalizeSelection, SelectionState } from '../src/selection.js';
 import { ACTIONS } from '../src/prompts.js';
 
 /** Run the actual companion logic with fake pipes/hook. Never spawns or listens. */
-async function harness() {
+async function harness({ ready = true } = {}) {
   const handlers = new Map(), messages = [], timers = new Map(), spawns = []; let clock = 0, hook, starts = 0;
   const fakeProcess = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: new EventEmitter(), env: {}, exit: () => {} });
   const ui = Object.assign(new EventEmitter(), { stdin: new EventEmitter(), stdout: {}, stderr: new EventEmitter(), exitCode: null, kill: () => {} });
@@ -29,17 +29,52 @@ async function harness() {
   const host = message => handlers.get(fakeProcess.stdin)(message);
   const surface = message => handlers.get(ui.stdout)(message);
   host({ type: 'init', nativeExe: 'fake.exe', iconSource: 'C:\\custom DSH install\\DeepSeek Harness.exe', windowStateFile: 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', settings: validateSettings({ enabled: true }) });
-  const select = text => {
-    hook.emit('text-selection', { text, programName: 'notepad.exe', endBottom: { x: 1, y: 2 } });
+  if (ready) surface({ type: 'ready' });
+  const flush = () => {
     for (const [id, fn] of [...timers]) { timers.delete(id); fn(); }
-    return messages.filter(x => x.to === 'ui' && x.type === 'selection').at(-1).id;
   };
-  return { host, surface, select, messages, spawns, starts: () => starts };
+  const emit = (name, data) => hook.emit(name, data);
+  const select = text => {
+    emit('text-selection', { text, programName: 'notepad.exe', endBottom: { x: 1, y: 2 } });
+    flush();
+    return messages.filter(x => x.to === 'ui' && x.type === 'selection').at(-1)?.id;
+  };
+  return { host, surface, select, emit, flush, messages, spawns, starts: () => starts };
 }
 
 test('native UI receives the host profile state path as one argument, outside the build cache', async () => {
   const h = await harness();
   assert.deepEqual(Array.from(h.spawns[0][1]), ['--state-file', 'C:\\custom DSH home\\plugin-data\\dsh-selection-assistant\\window-state.json', '--icon-source', 'C:\\custom DSH install\\DeepSeek Harness.exe']);
+});
+
+test('selection made during native startup is shown once after settings, using only the latest selection', async () => {
+  const h = await harness({ ready: false });
+  assert.equal(h.select('first startup selection'), undefined);
+  assert.equal(h.select('latest startup selection'), undefined);
+  h.surface({ type: 'ready' }); h.flush();
+  const shown = h.messages.filter(x => x.type === 'selection');
+  assert.equal(shown.length, 1);
+  assert(h.messages.findIndex(x => x.type === 'settings') < h.messages.findIndex(x => x.type === 'selection'));
+  h.surface({ type: 'action', id: shown[0].id, action: 'translate' });
+  assert.equal(h.messages.filter(x => x.to === 'host' && x.type === 'run').at(-1).text, 'latest startup selection');
+});
+
+test('cancelled startup selection is never replayed when the native UI becomes ready', async () => {
+  for (const event of ['mouse-wheel', 'key-down']) {
+    const h = await harness({ ready: false }); h.select('cancelled');
+    h.emit(event, { uniKey: 'Escape' });
+    h.surface({ type: 'ready' }); h.flush();
+    assert.equal(h.messages.filter(x => x.type === 'selection').length, 0);
+  }
+});
+
+test('quickly reselecting the same text after dismissal produces a clickable toolbar', async () => {
+  const h = await harness(); const first = h.select('same text');
+  h.surface({ type: 'dismiss', id: first });
+  const second = h.select('same text');
+  assert.notEqual(second, first);
+  h.surface({ type: 'action', id: second, action: 'translate' });
+  assert.equal(h.messages.filter(x => x.to === 'host' && x.type === 'run').at(-1).text, 'same text');
 });
 
 // Regression proven by review: cancelling A after B was clicked cancelled B.

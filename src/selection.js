@@ -37,7 +37,9 @@ export class SelectionState {
   accept(selection, ttl) {
     if (!selection) return null;
     const key = createHash('sha256').update(selection.programName + '\0' + selection.text + '\0' + selection.x + ',' + selection.y).digest('hex');
-    if (this.last?.key === key && this.now() - this.last.at < 400) return null;
+    // Coalesce duplicate hook callbacks only while their toolbar is still live.
+    // A dismissed/consumed toolbar must not suppress the user's next selection.
+    if (this.current && this.now() <= this.current.expires && this.last?.key === key && this.now() - this.last.at < 400) return null;
     this.last = { key, at: this.now() };
     this.current = { ...selection, expires: this.now() + ttl };
     return this.current;
@@ -48,5 +50,11 @@ export class SelectionState {
     this.clear();
     return this.now() <= value.expires ? value : null;
   }
-  clear() { this.current = null; }
+  markShown(id, ttl) {
+    if (!this.current || this.current.id !== id) return false;
+    // Expiry tracks the visible toolbar, including when native UI startup was slow.
+    this.current.expires = this.now() + ttl;
+    return true;
+  }
+  clear() { this.current = null; this.last = null; }
 }
