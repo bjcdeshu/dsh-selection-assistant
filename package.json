@@ -1,6 +1,6 @@
 {
   "name": "dsh-selection-assistant",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Windows 全局划词助手：Cherry 同款 selection-hook 取词，复用 DSH 模型进行翻译、解释与总结。",
   "type": "module",
   "main": "src/index.js",
@@ -13,9 +13,9 @@
     "demo": "node scripts/demo.mjs",
     "verify": "node scripts/check.mjs && node --test test/*.test.mjs"
   },
-  "engines": { "node": ">=22.19.0" },
+  "engines": { "node": ">=22.19.0", "dsh": ">=0.2.0-rc.2 <0.3.0-0" },
   "dependencies": { "selection-hook": "2.1.1" },
-  "peerDependencies": { "@deepseek-ai/dsh-llm": "0.2.0-rc.2" },
+  "peerDependencies": { "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2 <0.3.0-0" },
   "peerDependenciesMeta": { "@deepseek-ai/dsh-llm": { "optional": true } },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "keywords": ["dsh-plugin", "deepseek-harness", "selection-hook", "translation", "windows"],

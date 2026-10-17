@@ -2,6 +2,13 @@
 
 This records observed results, not a promise of universal application compatibility.
 
+## 2026-10-17 follow-up — Harness 0.2.1 compatibility
+
+- Plugin 0.1.1 declares `engines.dsh: >=0.2.0-rc.2 <0.3.0-0` and the matching optional LLM peer range. The previous exact `0.2.0-rc.2` peer rejected Desktop 0.2.1-rc.2. Same-series updates now pass without compatibility exemptions; 0.3 prereleases and older unsupported versions remain outside the range.
+- The installed Desktop 0.2.1-rc.2 runtime's actual `evaluatePluginCompatibility` reproduced the old rejection and accepted the updated manifest. Nine checks covered the old manifest plus old/current/future 0.2 versions and excluded versions.
+- The installed runtime's actual `LlmRuntime` with a local synthetic adapter passed model listing and all three plugin actions (translate, explain, summarize), including request controls and streamed completion. No provider request or credentials were used. All **32 JS tests** pass. Native code is unchanged.
+- The separate `deployment:persona-suffix` / `{{cwd}}` error was explicitly left to the user's other agent; no Harness profile or prompt configuration was changed in this task.
+
 ## 2026-10-15 follow-up — automatic theme and selection responsiveness
 
 The native build is `db14fa67df771cae`. The user reported that a window kept its night theme until Settings was opened, and that selecting text sometimes needed several attempts (probably in a browser).
